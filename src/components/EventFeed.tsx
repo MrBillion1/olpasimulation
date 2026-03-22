@@ -16,6 +16,14 @@ function weightBg(w: number): string {
   return 'bg-[hsl(var(--weight-low))]';
 }
 
+function impactBadge(impact: string): string {
+  switch (impact) {
+    case 'high': return 'bg-[hsl(var(--impact-high)/0.15)] text-impact-high border-[hsl(var(--impact-high)/0.3)]';
+    case 'medium': return 'bg-[hsl(var(--impact-medium)/0.15)] text-impact-medium border-[hsl(var(--impact-medium)/0.3)]';
+    default: return 'bg-[hsl(var(--impact-low)/0.15)] text-impact-low border-[hsl(var(--impact-low)/0.3)]';
+  }
+}
+
 function formatMod(v: number): string {
   return (v >= 0 ? '+' : '') + v.toFixed(2);
 }
@@ -25,7 +33,7 @@ export default function EventFeed({ events }: EventFeedProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <h3 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-3 px-1">
+      <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-3 px-1">
         Live Event Feed
       </h3>
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
@@ -35,14 +43,18 @@ export default function EventFeed({ events }: EventFeedProps) {
         {reversed.map((ev, i) => (
           <div
             key={ev.id}
-            className={`bg-card border border-border rounded-lg p-3 ${i === 0 ? 'animate-event-flash' : ''}`}
+            className={`bg-card border border-border rounded-lg p-3 ${i === 0 ? 'animate-event-flash' : ''} ${i === 0 && ev.impact === 'high' ? 'border-[hsl(var(--impact-high)/0.5)]' : ''}`}
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">
                   {String(ev.minute).padStart(2, '0')}′
                 </span>
+                <span className="text-base">{ev.emoji}</span>
                 <span className="text-sm font-semibold">{ev.type}</span>
+                <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded border font-semibold ${impactBadge(ev.impact)}`}>
+                  {ev.impact}
+                </span>
                 <span className="text-[10px] text-muted-foreground uppercase">{ev.team}</span>
               </div>
               <span className={`font-mono font-bold text-lg tabular-nums ${weightColor(ev.weight.final)}`}>

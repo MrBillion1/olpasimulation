@@ -20,14 +20,10 @@ export default function PitchView({ selectedZone, onZoneSelect, lastEventZone }:
     <div className="bg-pitch rounded-lg p-3 border border-border relative overflow-hidden">
       {/* Pitch markings overlay */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 300 200" preserveAspectRatio="none">
-        {/* Center line */}
         <line x1="150" y1="0" x2="150" y2="200" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.4" />
-        {/* Center circle */}
         <circle cx="150" cy="100" r="30" fill="none" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.4" />
-        {/* Penalty areas */}
         <rect x="0" y="50" width="40" height="100" fill="none" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.4" />
         <rect x="260" y="50" width="40" height="100" fill="none" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.4" />
-        {/* Goal areas */}
         <rect x="0" y="75" width="15" height="50" fill="none" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.3" />
         <rect x="285" y="75" width="15" height="50" fill="none" className="stroke-pitch-line" strokeWidth="0.5" opacity="0.3" />
       </svg>
@@ -47,10 +43,10 @@ export default function PitchView({ selectedZone, onZoneSelect, lastEventZone }:
                 transition-all duration-200 cursor-pointer border
                 ${isClicked ? 'animate-zone-click' : ''}
                 ${isSelected 
-                  ? 'bg-primary/20 border-primary/50 text-primary shadow-[0_0_12px_hsl(var(--primary)/0.2)]' 
+                  ? 'bg-[hsl(var(--gold)/0.2)] border-[hsl(var(--gold)/0.5)] text-gold shadow-[0_0_12px_hsl(var(--gold)/0.2)]' 
                   : isLast 
                     ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'bg-background/10 border-border/30 text-foreground/60 hover:bg-background/20 hover:border-border/50'
+                    : 'bg-background/10 border-border/30 text-foreground/60 hover:bg-background/20 hover:border-[hsl(var(--gold)/0.3)]'
                 }
               `}
               style={{ order: zone.row * 3 + zone.col }}
