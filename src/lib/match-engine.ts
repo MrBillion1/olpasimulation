@@ -5,14 +5,19 @@ export type ZoneId =
   | 'mid-left' | 'mid-center' | 'mid-right'
   | 'att-left' | 'att-center' | 'att-right';
 
+export type ImpactTier = 'high' | 'medium' | 'low';
+
 export type EventType = 
-  | 'Pass' | 'Tackle' | 'Shot' | 'Dribble' | 'Cross' 
-  | 'Long Ball' | 'Clearance' | 'Foul' | 'Save' | 'Header';
+  | 'Goal' | 'Red Card' | 'Penalty' | 'Own Goal'
+  | 'Shot on Target' | 'Corner' | 'Free Kick' | 'Yellow Card' | 'Offside'
+  | 'Pass' | 'Tackle' | 'Dribble' | 'Substitution' | 'Clearance' | 'Cross'
+  | 'Long Ball' | 'Foul' | 'Save' | 'Header' | 'Throw-in' | 'Goal Kick';
 
 export type SignificanceType = 
   | 'No shift' | 'Build-up play' | 'Creates counter-attack' 
   | 'Momentum swing to home' | 'Momentum swing to away'
-  | 'High goal-scoring chance' | 'Breaks defensive line' | 'Kills attack';
+  | 'High goal-scoring chance' | 'Breaks defensive line' | 'Kills attack'
+  | 'Game-changing moment' | 'Tactical adjustment';
 
 export interface WeightBreakdown {
   base: number;
@@ -31,6 +36,8 @@ export interface MatchEvent {
   weight: WeightBreakdown;
   team: 'home' | 'away';
   description: string;
+  impact: ImpactTier;
+  emoji: string;
 }
 
 export interface MatchState {
@@ -39,31 +46,47 @@ export interface MatchState {
   awayScore: number;
   half: 1 | 2;
   events: MatchEvent[];
-  momentum: number; // -1 (away) to 1 (home)
+  momentum: number;
   isRunning: boolean;
   selectedZone: ZoneId;
 }
 
-// Base weights per event type (success probability)
-export const BASE_WEIGHTS: Record<EventType, number> = {
-  'Pass': 0.82,
-  'Tackle': 0.65,
-  'Shot': 0.32,
-  'Dribble': 0.58,
-  'Cross': 0.45,
-  'Long Ball': 0.40,
-  'Clearance': 0.78,
-  'Foul': 0.55,
-  'Save': 0.60,
-  'Header': 0.38,
+// Event metadata with impact tiers and emoji
+export const EVENT_META: Record<EventType, { base: number; impact: ImpactTier; emoji: string }> = {
+  'Goal':            { base: 0.28, impact: 'high',   emoji: '⚽' },
+  'Red Card':        { base: 0.15, impact: 'high',   emoji: '🟥' },
+  'Penalty':         { base: 0.30, impact: 'high',   emoji: '⚠️' },
+  'Own Goal':        { base: 0.12, impact: 'high',   emoji: '⚽' },
+  'Shot on Target':  { base: 0.42, impact: 'medium', emoji: '🎯' },
+  'Corner':          { base: 0.72, impact: 'medium', emoji: '📐' },
+  'Free Kick':       { base: 0.55, impact: 'medium', emoji: '🦶' },
+  'Yellow Card':     { base: 0.80, impact: 'low',    emoji: '🟨' },
+  'Offside':         { base: 0.65, impact: 'low',    emoji: '🚩' },
+  'Pass':            { base: 0.88, impact: 'low',    emoji: '➡️' },
+  'Tackle':          { base: 0.68, impact: 'medium', emoji: '🦵' },
+  'Dribble':         { base: 0.58, impact: 'medium', emoji: '💨' },
+  'Substitution':    { base: 0.95, impact: 'low',    emoji: '🔄' },
+  'Clearance':       { base: 0.78, impact: 'low',    emoji: '🧹' },
+  'Cross':           { base: 0.45, impact: 'medium', emoji: '↗️' },
+  'Long Ball':       { base: 0.40, impact: 'low',    emoji: '🏈' },
+  'Foul':            { base: 0.70, impact: 'low',    emoji: '✋' },
+  'Save':            { base: 0.55, impact: 'medium', emoji: '🧤' },
+  'Header':          { base: 0.38, impact: 'medium', emoji: '🗣️' },
+  'Throw-in':        { base: 0.92, impact: 'low',    emoji: '🤾' },
+  'Goal Kick':       { base: 0.90, impact: 'low',    emoji: '👟' },
 };
 
-export const EVENT_TYPES: EventType[] = Object.keys(BASE_WEIGHTS) as EventType[];
+export const EVENT_TYPES: EventType[] = Object.keys(EVENT_META) as EventType[];
+
+export const HIGH_IMPACT_EVENTS: EventType[] = EVENT_TYPES.filter(e => EVENT_META[e].impact === 'high');
+export const MEDIUM_IMPACT_EVENTS: EventType[] = EVENT_TYPES.filter(e => EVENT_META[e].impact === 'medium');
+export const LOW_IMPACT_EVENTS: EventType[] = EVENT_TYPES.filter(e => EVENT_META[e].impact === 'low');
 
 export const SIGNIFICANCE_TYPES: SignificanceType[] = [
   'No shift', 'Build-up play', 'Creates counter-attack',
   'Momentum swing to home', 'Momentum swing to away',
   'High goal-scoring chance', 'Breaks defensive line', 'Kills attack',
+  'Game-changing moment', 'Tactical adjustment',
 ];
 
 export const ZONES: { id: ZoneId; label: string; row: number; col: number }[] = [
@@ -80,19 +103,28 @@ export const ZONES: { id: ZoneId; label: string; row: number; col: number }[] = 
 
 const ZONE_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
   'def': {
-    'Pass': 0.10, 'Tackle': 0.15, 'Shot': -0.25, 'Dribble': -0.10,
+    'Goal': -0.15, 'Red Card': 0.05, 'Penalty': -0.20, 'Own Goal': 0.10,
+    'Shot on Target': -0.25, 'Corner': -0.10, 'Free Kick': -0.05,
+    'Pass': 0.10, 'Tackle': 0.15, 'Dribble': -0.10,
     'Cross': -0.15, 'Long Ball': 0.05, 'Clearance': 0.20, 'Foul': 0.10,
-    'Save': 0.15, 'Header': -0.10,
+    'Save': 0.15, 'Header': -0.10, 'Yellow Card': 0.05, 'Offside': 0.00,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.05,
   },
   'mid': {
-    'Pass': 0.05, 'Tackle': 0.05, 'Shot': -0.10, 'Dribble': 0.10,
+    'Goal': -0.05, 'Red Card': 0.00, 'Penalty': -0.10, 'Own Goal': 0.00,
+    'Shot on Target': -0.10, 'Corner': 0.05, 'Free Kick': 0.05,
+    'Pass': 0.05, 'Tackle': 0.05, 'Dribble': 0.10,
     'Cross': 0.05, 'Long Ball': 0.10, 'Clearance': 0.00, 'Foul': 0.00,
-    'Save': -0.05, 'Header': 0.05,
+    'Save': -0.05, 'Header': 0.05, 'Yellow Card': 0.00, 'Offside': 0.00,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.00,
   },
   'att': {
-    'Pass': -0.05, 'Tackle': -0.10, 'Shot': 0.25, 'Dribble': 0.15,
+    'Goal': 0.20, 'Red Card': -0.05, 'Penalty': 0.25, 'Own Goal': -0.05,
+    'Shot on Target': 0.25, 'Corner': 0.15, 'Free Kick': 0.15,
+    'Pass': -0.05, 'Tackle': -0.10, 'Dribble': 0.15,
     'Cross': 0.20, 'Long Ball': -0.10, 'Clearance': -0.20, 'Foul': -0.05,
-    'Save': -0.15, 'Header': 0.20,
+    'Save': -0.15, 'Header': 0.20, 'Yellow Card': -0.05, 'Offside': 0.05,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': -0.05,
   },
 };
 
@@ -105,6 +137,8 @@ const SIGNIFICANCE_MODIFIERS: Record<SignificanceType, number> = {
   'High goal-scoring chance': 0.40,
   'Breaks defensive line': 0.22,
   'Kills attack': -0.12,
+  'Game-changing moment': 0.35,
+  'Tactical adjustment': 0.05,
 };
 
 export function getZoneModifier(zone: ZoneId, eventType: EventType): number {
@@ -113,18 +147,19 @@ export function getZoneModifier(zone: ZoneId, eventType: EventType): number {
 }
 
 export function getTimeModifier(minute: number, eventType: EventType): number {
-  const defensive = ['Tackle', 'Clearance', 'Save', 'Foul'];
-  const offensive = ['Shot', 'Cross', 'Dribble', 'Header'];
+  const meta = EVENT_META[eventType];
   
   if (minute <= 15) {
-    // Early game: slight penalty across the board
-    return defensive.includes(eventType) ? -0.05 : -0.08;
+    return meta.impact === 'high' ? -0.05 : -0.08;
   } else if (minute >= 75) {
-    // Late game: fatigue effects
-    return defensive.includes(eventType) ? 0.18 : (offensive.includes(eventType) ? -0.10 : 0.05);
+    // Late game: high-impact events become more dramatic
+    if (meta.impact === 'high') return 0.15;
+    if (meta.impact === 'medium') return 0.05;
+    return -0.05; // fatigue on low-impact
   } else if (minute >= 40 && minute <= 48) {
-    // End of half tension
-    return 0.08;
+    return 0.08; // end-of-half tension
+  } else if (minute >= 85) {
+    return meta.impact === 'high' ? 0.25 : 0.10; // injury time drama
   }
   return 0;
 }
@@ -135,7 +170,7 @@ export function calculateWeight(
   significance: SignificanceType,
   minute: number
 ): WeightBreakdown {
-  const base = BASE_WEIGHTS[eventType];
+  const base = EVENT_META[eventType].base;
   const zoneMod = getZoneModifier(zone, eventType);
   const sigMod = SIGNIFICANCE_MODIFIERS[significance];
   const timeMod = getTimeModifier(minute, eventType);
@@ -154,18 +189,27 @@ export function getSignificanceDescription(sig: SignificanceType, weight: number
     case 'Breaks defensive line': return `Opens space for ${Math.round(weight * 60)}% better attack`;
     case 'Build-up play': return `Contributes to sustained ${pct}% possession pressure`;
     case 'Kills attack': return `Neutralizes threat, ${Math.round((1 - weight) * 100)}% reset`;
+    case 'Game-changing moment': return `Match dynamics shift dramatically — ${pct}% impact`;
+    case 'Tactical adjustment': return `Minor tactical shift, ${pct}% continuation`;
     default: return `Neutral play continuation at ${pct}% success rate`;
   }
 }
 
 export function pickRandomEvent(): EventType {
-  // Weighted random: passes most common
-  const weights = [25, 10, 6, 8, 7, 5, 8, 5, 4, 5]; // roughly matches real football
-  const total = weights.reduce((a, b) => a + b, 0);
+  // Weighted: low-impact events happen most, high-impact least
+  const weights: [EventType, number][] = [
+    ['Pass', 22], ['Tackle', 8], ['Foul', 6], ['Throw-in', 5], ['Goal Kick', 4],
+    ['Clearance', 6], ['Long Ball', 4], ['Yellow Card', 3], ['Offside', 3],
+    ['Substitution', 2],
+    ['Shot on Target', 5], ['Corner', 5], ['Free Kick', 4], ['Cross', 5],
+    ['Dribble', 6], ['Save', 3], ['Header', 4],
+    ['Goal', 2], ['Red Card', 0.5], ['Penalty', 1], ['Own Goal', 0.3],
+  ];
+  const total = weights.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
-  for (let i = 0; i < EVENT_TYPES.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return EVENT_TYPES[i];
+  for (const [type, w] of weights) {
+    r -= w;
+    if (r <= 0) return type;
   }
   return 'Pass';
 }
@@ -175,27 +219,29 @@ export function pickRandomZone(): ZoneId {
 }
 
 export function pickRandomSignificance(eventType: EventType): SignificanceType {
-  // Context-aware random significance
-  if (eventType === 'Shot') {
-    const opts: SignificanceType[] = ['High goal-scoring chance', 'No shift', 'Momentum swing to home', 'Kills attack'];
+  const meta = EVENT_META[eventType];
+  
+  if (meta.impact === 'high') {
+    const opts: SignificanceType[] = ['Game-changing moment', 'High goal-scoring chance', 'Momentum swing to home', 'Momentum swing to away'];
     return opts[Math.floor(Math.random() * opts.length)];
   }
-  if (eventType === 'Tackle' || eventType === 'Clearance') {
-    const opts: SignificanceType[] = ['Kills attack', 'Creates counter-attack', 'No shift', 'Momentum swing to home'];
+  if (meta.impact === 'medium') {
+    const opts: SignificanceType[] = ['Build-up play', 'Creates counter-attack', 'Breaks defensive line', 'Momentum swing to home', 'No shift'];
     return opts[Math.floor(Math.random() * opts.length)];
   }
-  const common: SignificanceType[] = ['No shift', 'Build-up play', 'Creates counter-attack', 'Breaks defensive line', 'Momentum swing to home', 'Momentum swing to away'];
-  return common[Math.floor(Math.random() * common.length)];
+  // low impact
+  const opts: SignificanceType[] = ['No shift', 'Build-up play', 'Tactical adjustment', 'Kills attack'];
+  return opts[Math.floor(Math.random() * opts.length)];
 }
 
 export function createInitialState(): MatchState {
   return {
     minute: 0,
-    homeScore: 1,
+    homeScore: 0,
     awayScore: 0,
     half: 1,
     events: [],
-    momentum: 0.15,
+    momentum: 0,
     isRunning: false,
     selectedZone: 'mid-center',
   };

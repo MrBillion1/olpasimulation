@@ -13,7 +13,7 @@ export default function TradePanel({ latestEvent }: TradePanelProps) {
   if (!latestEvent) {
     return (
       <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-2">Trade Panel</h3>
+        <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">Trade Panel</h3>
         <p className="text-muted-foreground/50 text-sm text-center py-4">Waiting for an event…</p>
       </div>
     );
@@ -34,12 +34,17 @@ export default function TradePanel({ latestEvent }: TradePanelProps) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Trade Panel</h3>
-        <span className="font-mono text-sm font-bold text-primary tabular-nums">${balance.toFixed(2)}</span>
+        <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Trade Panel</h3>
+        <span className="font-mono text-sm font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
       </div>
 
-      <div className="bg-secondary/50 rounded-md p-2.5 mb-3">
-        <p className="text-[11px] text-muted-foreground mb-1">Current: <span className="text-foreground font-medium">{latestEvent.type}</span> @ {latestEvent.minute}′</p>
+      <div className="bg-secondary/50 rounded-md p-2.5 mb-3 border border-[hsl(var(--gold-muted))]">
+        <p className="text-[11px] text-muted-foreground mb-1">
+          {latestEvent.emoji} <span className="text-foreground font-medium">{latestEvent.type}</span> @ {latestEvent.minute}′
+          <span className={`ml-1.5 text-[9px] uppercase font-semibold ${
+            latestEvent.impact === 'high' ? 'text-impact-high' : latestEvent.impact === 'medium' ? 'text-impact-medium' : 'text-impact-low'
+          }`}>{latestEvent.impact}</span>
+        </p>
         <p className="text-[11px] text-muted-foreground">Dynamic weight: <span className="font-mono font-bold text-foreground">{w.toFixed(2)}</span></p>
       </div>
 
@@ -52,7 +57,7 @@ export default function TradePanel({ latestEvent }: TradePanelProps) {
           step={10}
           value={stake}
           onChange={e => setStake(Number(e.target.value))}
-          className="w-full accent-primary h-1"
+          className="w-full accent-[hsl(var(--gold))] h-1"
         />
         <div className="text-right font-mono text-xs text-muted-foreground">${stake}</div>
       </div>
@@ -60,7 +65,7 @@ export default function TradePanel({ latestEvent }: TradePanelProps) {
       <div className="grid grid-cols-2 gap-2 mb-3">
         <button
           onClick={() => handleTrade('success')}
-          className="bg-[hsl(var(--weight-high))] text-background font-semibold text-xs py-2 rounded-md
+          className="bg-accent text-accent-foreground font-semibold text-xs py-2 rounded-md
                      hover:brightness-110 active:scale-[0.97] transition-all"
         >
           Buy Success
@@ -68,7 +73,7 @@ export default function TradePanel({ latestEvent }: TradePanelProps) {
         </button>
         <button
           onClick={() => handleTrade('failure')}
-          className="bg-[hsl(var(--weight-low))] text-foreground font-semibold text-xs py-2 rounded-md
+          className="bg-destructive text-destructive-foreground font-semibold text-xs py-2 rounded-md
                      hover:brightness-110 active:scale-[0.97] transition-all"
         >
           Buy Failure

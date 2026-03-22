@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   MatchState, MatchEvent, EventType, ZoneId, SignificanceType,
   createInitialState, calculateWeight, pickRandomEvent, pickRandomZone,
-  pickRandomSignificance, getSignificanceDescription,
+  pickRandomSignificance, getSignificanceDescription, EVENT_META,
 } from '@/lib/match-engine';
 import MatchHeader from '@/components/MatchHeader';
 import PitchView from '@/components/PitchView';
@@ -27,7 +27,7 @@ export default function Index() {
           if (next > 90) return { ...s, isRunning: false };
           return { ...s, minute: next, half: next > 45 ? 2 : 1 };
         });
-      }, 2000); // 2s per minute
+      }, 2000);
     }
     return () => { if (clockRef.current) clearInterval(clockRef.current); };
   }, [state.isRunning]);
@@ -39,6 +39,7 @@ export default function Index() {
       const eventSig = sig ?? pickRandomSignificance(eventType);
       const weight = calculateWeight(eventType, eventZone, eventSig, prev.minute);
       const team = Math.random() > 0.5 ? 'home' as const : 'away' as const;
+      const meta = EVENT_META[eventType];
 
       const ev: MatchEvent = {
         id: `evt-${++eventCounter}`,
@@ -49,16 +50,27 @@ export default function Index() {
         weight,
         team,
         description: getSignificanceDescription(eventSig, weight.final),
+        impact: meta.impact,
+        emoji: meta.emoji,
       };
 
-      // Update momentum
       const momentumDelta = team === 'home' ? weight.final * 0.05 : -weight.final * 0.05;
       const newMomentum = Math.max(-1, Math.min(1, prev.momentum + momentumDelta));
 
-      // Chance of goal on high-weight shots
       let homeScore = prev.homeScore;
       let awayScore = prev.awayScore;
-      if (eventType === 'Shot' && weight.final > 0.55 && Math.random() < weight.final * 0.15) {
+      
+      // Goals
+      if (eventType === 'Goal') {
+        if (team === 'home') homeScore++;
+        else awayScore++;
+      }
+      if (eventType === 'Own Goal') {
+        if (team === 'home') awayScore++;
+        else homeScore++;
+      }
+      // Penalty conversion
+      if (eventType === 'Penalty' && Math.random() < weight.final * 0.7) {
         if (team === 'home') homeScore++;
         else awayScore++;
       }
@@ -92,14 +104,13 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header strip */}
-      <div className="border-b border-border bg-card/50 px-4 py-2">
-        <p className="text-[11px] text-muted-foreground text-center tracking-wide">
-          Advanced Dynamic Micro-Event Demo – built on OlpaDEX concept
+      <div className="border-b border-[hsl(var(--gold-muted))] bg-card/80 px-4 py-2">
+        <p className="text-[11px] text-gold text-center tracking-wide font-medium">
+          Advanced Dynamic Micro-Event Demo – built on <span className="font-semibold">OlpaDEX</span> concept
         </p>
       </div>
 
       <div className="flex-1 p-4 max-w-[1400px] mx-auto w-full">
-        {/* Match header */}
         <MatchHeader
           minute={state.minute}
           homeScore={state.homeScore}
@@ -108,7 +119,6 @@ export default function Index() {
           isRunning={state.isRunning}
         />
 
-        {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-4 mt-4">
           {/* Left column */}
           <div className="space-y-4">
@@ -128,13 +138,18 @@ export default function Index() {
             <StatsPanel events={state.events} momentum={state.momentum} half={state.half} />
 
             {/* Legend */}
-            <div className="bg-card border border-border rounded-lg p-3">
-              <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">How It Works</h4>
+            <div className="bg-card border border-[hsl(var(--gold-muted))] rounded-lg p-3">
+              <h4 className="text-[10px] uppercase tracking-widest text-gold font-semibold mb-1.5">How It Works</h4>
               <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
                 Original OlpaDEX used fixed statistical weights at contract level. This advanced demo
                 makes weights <span className="text-foreground font-medium">fully dynamic</span> using
                 zone + significance + time modifiers calculated in real time.
               </p>
+              <div className="mt-2 flex gap-3 text-[10px]">
+                <span className="text-impact-high">● High Impact</span>
+                <span className="text-impact-medium">● Medium</span>
+                <span className="text-impact-low">● Low</span>
+              </div>
             </div>
           </div>
 
@@ -148,10 +163,10 @@ export default function Index() {
             <TradePanel latestEvent={latestEvent} />
 
             {/* Weight formula */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2">Dynamic Weight Formula</h4>
-              <div className="font-mono text-xs text-foreground/80 bg-secondary/50 rounded-md p-2.5 leading-relaxed">
-                <span className="text-primary">final_weight</span> = base_weight<br />
+            <div className="bg-card border border-[hsl(var(--gold-muted))] rounded-lg p-4">
+              <h4 className="text-[10px] uppercase tracking-widest text-gold font-semibold mb-2">Dynamic Weight Formula</h4>
+              <div className="font-mono text-xs text-foreground/80 bg-secondary/50 rounded-md p-2.5 leading-relaxed border border-border">
+                <span className="text-gold">final_weight</span> = base_weight<br />
                 &nbsp;&nbsp;+ zone_modifier<br />
                 &nbsp;&nbsp;+ significance_modifier<br />
                 &nbsp;&nbsp;+ time_modifier
