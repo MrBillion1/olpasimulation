@@ -1,12 +1,12 @@
-import { MatchEvent, EVENT_META } from '@/lib/match-engine';
+import { MatchEvent } from '@/lib/match-engine';
 import { useEffect, useRef } from 'react';
 
 interface CommentaryProps {
   events: MatchEvent[];
 }
 
-const PLAYER_NAMES_HOME = ['Salah', 'Fernández', 'Nakamura', 'Diallo', 'Jensen', 'Kessié', 'Rodríguez', 'Müller', 'Santos', 'Chen', 'Okafor'];
-const PLAYER_NAMES_AWAY = ['Kane', 'Mbappé', 'De Jong', 'Haaland', 'Bellingham', 'Saka', 'Vinícius', 'Pedri', 'Gavi', 'Rashford', 'Foden'];
+const PLAYER_NAMES_HOME = ['De Bruyne', 'Haaland', 'Foden', 'Bernardo', 'Rodri', 'Walker', 'Stones', 'Dias', 'Grealish', 'Doku', 'Ederson'];
+const PLAYER_NAMES_AWAY = ['Fernandes', 'Rashford', 'Garnacho', 'Mainoo', 'Casemiro', 'Shaw', 'Martínez', 'Varane', 'Mount', 'Højlund', 'Onana'];
 
 function getPlayer(team: 'home' | 'away'): string {
   const names = team === 'home' ? PLAYER_NAMES_HOME : PLAYER_NAMES_AWAY;
@@ -15,11 +15,11 @@ function getPlayer(team: 'home' | 'away'): string {
 
 function generateCommentary(ev: MatchEvent): string {
   const player = getPlayer(ev.team);
-  const teamName = ev.team === 'home' ? 'FC Dynamic' : 'Micro United';
+  const teamName = ev.team === 'home' ? 'Man City' : 'Man United';
 
   switch (ev.type) {
     case 'Goal':
-      return `⚽ GOOOAL! ${player} scores for ${teamName}! The crowd erupts! What a moment!`;
+      return `⚽ GOOOAL! ${player} scores for ${teamName}! The crowd erupts!`;
     case 'Red Card':
       return `🟥 RED CARD! ${player} is sent off! ${teamName} down to ${Math.floor(Math.random() * 2) + 9} men!`;
     case 'Penalty':
@@ -35,31 +35,31 @@ function generateCommentary(ev: MatchEvent): string {
     case 'Yellow Card':
       return `🟨 Yellow card shown to ${player}. He needs to be careful now.`;
     case 'Offside':
-      return `🚩 Flag goes up — ${player} caught offside. Play stopped.`;
+      return `🚩 Flag goes up — ${player} caught offside.`;
     case 'Pass':
-      return `${player} distributes the ball neatly, keeping possession for ${teamName}.`;
+      return `${player} distributes the ball neatly for ${teamName}.`;
     case 'Tackle':
-      return `🦵 Crunching tackle by ${player}! Wins the ball back for ${teamName}.`;
+      return `🦵 Crunching tackle by ${player}! Wins the ball back.`;
     case 'Dribble':
       return `💨 ${player} takes on his marker with a brilliant dribble!`;
     case 'Substitution':
       return `🔄 Tactical change for ${teamName}. Fresh legs coming on.`;
     case 'Clearance':
-      return `🧹 ${player} clears the danger. ${teamName} can breathe again.`;
+      return `🧹 ${player} clears the danger for ${teamName}.`;
     case 'Cross':
       return `↗️ ${player} whips in a cross from the ${ev.zone.includes('left') ? 'left' : 'right'} flank!`;
     case 'Long Ball':
-      return `🏈 ${player} launches a long ball forward, looking for the runners.`;
+      return `🏈 ${player} launches a long ball forward.`;
     case 'Foul':
       return `✋ Foul by ${player}. The ref blows the whistle.`;
     case 'Save':
-      return `🧤 What a save! The keeper denies ${player} brilliantly!`;
+      return `🧤 What a save! The keeper denies ${player}!`;
     case 'Header':
       return `🗣️ ${player} rises highest and connects with a header!`;
     case 'Throw-in':
       return `${player} takes a quick throw-in for ${teamName}.`;
     case 'Goal Kick':
-      return `👟 Goal kick for ${teamName}. ${player} restarts play.`;
+      return `👟 Goal kick for ${teamName}.`;
     default:
       return `${player} is involved for ${teamName}.`;
   }

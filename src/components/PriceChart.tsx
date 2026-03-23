@@ -1,49 +1,30 @@
-import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { MatchEvent } from '@/lib/match-engine';
 
 interface PriceChartProps {
   priceHistory: { minute: number; price: number; event?: string }[];
-  selectedTeam: 'home' | 'away';
-  onSelectTeam: (team: 'home' | 'away') => void;
   currentPrice: number;
   startPrice: number;
 }
 
-export default function PriceChart({ priceHistory, selectedTeam, onSelectTeam, currentPrice, startPrice }: PriceChartProps) {
+export default function PriceChart({ priceHistory, currentPrice, startPrice }: PriceChartProps) {
   const priceChange = currentPrice - startPrice;
   const priceChangePct = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : '0.00';
   const isUp = priceChange >= 0;
-
   const chartColor = isUp ? 'hsl(145, 55%, 42%)' : 'hsl(0, 68%, 50%)';
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      {/* Team selector */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Live Price</h3>
-        <div className="flex gap-1">
-          <button
-            onClick={() => onSelectTeam('home')}
-            className={`text-[10px] px-3 py-1 rounded font-semibold transition-all ${
-              selectedTeam === 'home'
-                ? 'bg-gold text-primary-foreground'
-                : 'bg-secondary text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            🏠 FC Dynamic
-          </button>
-          <button
-            onClick={() => onSelectTeam('away')}
-            className={`text-[10px] px-3 py-1 rounded font-semibold transition-all ${
-              selectedTeam === 'away'
-                ? 'bg-foreground text-background'
-                : 'bg-secondary text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            ✈️ Micro United
-          </button>
-        </div>
+        <span className="font-mono text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
+          MCIMUN/USDT
+        </span>
+      </div>
+
+      {/* Team labels */}
+      <div className="flex items-center justify-between mb-1 text-[9px]">
+        <span className="text-[hsl(var(--sky-blue))] font-semibold">🏠 Man City (Home)</span>
+        <span className="text-destructive font-semibold">✈️ Man United (Away)</span>
       </div>
 
       {/* Price display */}
@@ -54,14 +35,6 @@ export default function PriceChart({ priceHistory, selectedTeam, onSelectTeam, c
         <span className={`font-mono text-sm font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
           {isUp ? '▲' : '▼'} {Math.abs(priceChange).toFixed(2)} ({isUp ? '+' : ''}{priceChangePct}%)
         </span>
-      </div>
-
-      {/* Pair label */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] font-mono text-muted-foreground bg-secondary px-2 py-0.5 rounded">
-          {selectedTeam === 'home' ? 'FCDYN' : 'MCUTD'}/USDT
-        </span>
-        <span className="text-[9px] text-muted-foreground">Micro-Event Market</span>
       </div>
 
       {/* Chart */}
@@ -114,8 +87,8 @@ export default function PriceChart({ priceHistory, selectedTeam, onSelectTeam, c
       </div>
 
       <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-        <span>Home events push price {selectedTeam === 'home' ? '↑' : '↓'}</span>
-        <span>Away events push price {selectedTeam === 'home' ? '↓' : '↑'}</span>
+        <span>City positive events → price ↑</span>
+        <span>United positive events → price ↓</span>
       </div>
     </div>
   );

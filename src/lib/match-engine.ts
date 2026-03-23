@@ -51,6 +51,26 @@ export interface MatchState {
   selectedZone: ZoneId;
 }
 
+// Whether an event is "positive" for the team that produced it
+// Positive events from home push price UP; positive events from away push price DOWN
+// Negative events from home push price DOWN; negative events from away push price UP
+export const POSITIVE_EVENTS: Set<EventType> = new Set([
+  'Goal', 'Shot on Target', 'Corner', 'Free Kick', 'Penalty',
+  'Pass', 'Dribble', 'Cross', 'Header', 'Long Ball', 'Save', 'Tackle', 'Clearance',
+]);
+
+export const NEGATIVE_EVENTS: Set<EventType> = new Set([
+  'Red Card', 'Own Goal', 'Yellow Card', 'Foul', 'Offside',
+]);
+
+// Neutral: Substitution, Throw-in, Goal Kick — small random direction
+
+export function getEventSentiment(type: EventType): 'positive' | 'negative' | 'neutral' {
+  if (POSITIVE_EVENTS.has(type)) return 'positive';
+  if (NEGATIVE_EVENTS.has(type)) return 'negative';
+  return 'neutral';
+}
+
 // Event metadata with impact tiers and emoji
 export const EVENT_META: Record<EventType, { base: number; impact: ImpactTier; emoji: string }> = {
   'Goal':            { base: 0.28, impact: 'high',   emoji: '⚽' },
@@ -148,34 +168,28 @@ export function getZoneModifier(zone: ZoneId, eventType: EventType): number {
 
 export function getTimeModifier(minute: number, eventType: EventType): number {
   const meta = EVENT_META[eventType];
-  
   if (minute <= 15) {
     return meta.impact === 'high' ? -0.05 : -0.08;
   } else if (minute >= 75) {
-    // Late game: high-impact events become more dramatic
     if (meta.impact === 'high') return 0.15;
     if (meta.impact === 'medium') return 0.05;
-    return -0.05; // fatigue on low-impact
+    return -0.05;
   } else if (minute >= 40 && minute <= 48) {
-    return 0.08; // end-of-half tension
+    return 0.08;
   } else if (minute >= 85) {
-    return meta.impact === 'high' ? 0.25 : 0.10; // injury time drama
+    return meta.impact === 'high' ? 0.25 : 0.10;
   }
   return 0;
 }
 
 export function calculateWeight(
-  eventType: EventType,
-  zone: ZoneId,
-  significance: SignificanceType,
-  minute: number
+  eventType: EventType, zone: ZoneId, significance: SignificanceType, minute: number
 ): WeightBreakdown {
   const base = EVENT_META[eventType].base;
   const zoneMod = getZoneModifier(zone, eventType);
   const sigMod = SIGNIFICANCE_MODIFIERS[significance];
   const timeMod = getTimeModifier(minute, eventType);
   const final = Math.max(0.01, Math.min(0.99, base + zoneMod + sigMod + timeMod));
-  
   return { base, zone: zoneMod, significance: sigMod, time: timeMod, final: Math.round(final * 100) / 100 };
 }
 
@@ -196,7 +210,6 @@ export function getSignificanceDescription(sig: SignificanceType, weight: number
 }
 
 export function pickRandomEvent(): EventType {
-  // Weighted: low-impact events happen most, high-impact least
   const weights: [EventType, number][] = [
     ['Pass', 22], ['Tackle', 8], ['Foul', 6], ['Throw-in', 5], ['Goal Kick', 4],
     ['Clearance', 6], ['Long Ball', 4], ['Yellow Card', 3], ['Offside', 3],
@@ -220,7 +233,6 @@ export function pickRandomZone(): ZoneId {
 
 export function pickRandomSignificance(eventType: EventType): SignificanceType {
   const meta = EVENT_META[eventType];
-  
   if (meta.impact === 'high') {
     const opts: SignificanceType[] = ['Game-changing moment', 'High goal-scoring chance', 'Momentum swing to home', 'Momentum swing to away'];
     return opts[Math.floor(Math.random() * opts.length)];
@@ -229,20 +241,13 @@ export function pickRandomSignificance(eventType: EventType): SignificanceType {
     const opts: SignificanceType[] = ['Build-up play', 'Creates counter-attack', 'Breaks defensive line', 'Momentum swing to home', 'No shift'];
     return opts[Math.floor(Math.random() * opts.length)];
   }
-  // low impact
   const opts: SignificanceType[] = ['No shift', 'Build-up play', 'Tactical adjustment', 'Kills attack'];
   return opts[Math.floor(Math.random() * opts.length)];
 }
 
 export function createInitialState(): MatchState {
   return {
-    minute: 0,
-    homeScore: 0,
-    awayScore: 0,
-    half: 1,
-    events: [],
-    momentum: 0,
-    isRunning: false,
-    selectedZone: 'mid-center',
+    minute: 0, homeScore: 0, awayScore: 0, half: 1,
+    events: [], momentum: 0, isRunning: false, selectedZone: 'mid-center',
   };
 }
