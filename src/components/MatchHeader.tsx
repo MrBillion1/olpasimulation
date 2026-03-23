@@ -18,32 +18,46 @@ export default function MatchHeader({ minute, homeScore, awayScore, half, isRunn
   }, [isRunning]);
 
   return (
-    <div className="flex items-center justify-between bg-card rounded-lg px-6 py-3 border border-border">
-      <div className="flex items-center gap-3">
-        <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-accent animate-pulse' : 'bg-muted-foreground'}`} />
-        <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">
-          {isRunning ? 'Live' : 'Paused'}
-        </span>
+    <div className="bg-card rounded-lg border border-border overflow-hidden">
+      {/* Market contract bar */}
+      <div className="bg-secondary/60 border-b border-border px-4 py-1.5 flex items-center justify-center gap-2">
+        <span className="font-mono text-xs font-bold text-gold tracking-wider">MCIMUN/USDT</span>
+        <span className="text-[9px] text-muted-foreground">• Micro-Event Market</span>
       </div>
 
-      <div className="flex items-center gap-6">
-        <span className="text-lg font-bold tracking-tight text-gold">FC Dynamic</span>
-        <div className="flex items-center gap-3 bg-secondary rounded-md px-4 py-1.5 border border-[hsl(var(--gold-muted))]">
-          <span className="text-2xl font-black tabular-nums">{homeScore}</span>
-          <span className="text-muted-foreground font-medium">–</span>
-          <span className="text-2xl font-black tabular-nums">{awayScore}</span>
+      <div className="flex items-center justify-between px-6 py-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-accent animate-pulse' : 'bg-muted-foreground'}`} />
+          <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">
+            {isRunning ? 'Live' : 'Paused'}
+          </span>
         </div>
-        <span className="text-lg font-bold tracking-tight text-gold">Micro United</span>
-      </div>
 
-      <div className="flex items-center gap-4">
-        <div className="text-right">
-          <div className="font-mono text-xl font-bold tabular-nums text-gold">
-            {String(minute).padStart(2, '0')}
-            <span className={isRunning && !blink ? 'opacity-0' : ''}>′</span>
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <span className="text-lg font-bold tracking-tight text-[hsl(var(--sky-blue))]">Man City</span>
+            <p className="text-[9px] text-muted-foreground">Home</p>
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {half === 1 ? '1st Half' : '2nd Half'}
+          <div className="flex items-center gap-3 bg-secondary rounded-md px-4 py-1.5 border border-[hsl(var(--gold-muted))]">
+            <span className="text-2xl font-black tabular-nums">{homeScore}</span>
+            <span className="text-muted-foreground font-medium">–</span>
+            <span className="text-2xl font-black tabular-nums">{awayScore}</span>
+          </div>
+          <div className="text-left">
+            <span className="text-lg font-bold tracking-tight text-destructive">Man United</span>
+            <p className="text-[9px] text-muted-foreground">Away</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="font-mono text-xl font-bold tabular-nums text-gold">
+              {String(minute).padStart(2, '0')}
+              <span className={isRunning && !blink ? 'opacity-0' : ''}>′</span>
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {half === 1 ? '1st Half' : '2nd Half'}
+            </div>
           </div>
         </div>
       </div>
