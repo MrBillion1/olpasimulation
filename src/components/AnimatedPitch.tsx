@@ -17,6 +17,11 @@ interface AnimatedPitchProps {
   isRunning: boolean;
   minute: number;
   ballZone: ZoneId;
+  homeTeam: string;
+  awayTeam: string;
+  homeColor: string;
+  awayColor: string;
+  varActive: boolean;
 }
 
 const ZONE_CENTERS: Record<ZoneId, { x: number; y: number }> = {
@@ -46,7 +51,7 @@ function createPlayers(): Player[] {
   ];
 }
 
-export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZone, lastEventTeam, isRunning, minute, ballZone }: AnimatedPitchProps) {
+export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZone, lastEventTeam, isRunning, minute, ballZone, homeTeam, awayTeam, homeColor, awayColor, varActive }: AnimatedPitchProps) {
   const [players, setPlayers] = useState<Player[]>(createPlayers);
   const [ballPos, setBallPos] = useState({ x: 150, y: 100 });
   const [eventFlash, setEventFlash] = useState(false);
@@ -61,7 +66,7 @@ export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZon
   }, [lastEventZone, minute]);
 
   useEffect(() => {
-    if (!isRunning) return;
+    if (!isRunning || varActive) return;
     const moveInterval = setInterval(() => {
       setPlayers(prev => prev.map(p => {
         const bc = ZONE_CENTERS[ballZone];
@@ -95,17 +100,25 @@ export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZon
       }));
     }, 100);
     return () => clearInterval(moveInterval);
-  }, [isRunning, ballZone, lastEventTeam]);
+  }, [isRunning, ballZone, lastEventTeam, varActive]);
 
   const flashCenter = lastEventZone ? ZONE_CENTERS[lastEventZone] : null;
 
   return (
     <div className="bg-pitch rounded-lg border border-border relative overflow-hidden">
-      {/* Team legend */}
       <div className="absolute top-1 left-2 z-10 flex gap-3 text-[8px] font-semibold">
-        <span className="text-[hsl(var(--sky-blue))]">● Man City</span>
-        <span className="text-foreground/80">● Man United</span>
+        <span style={{ color: homeColor }}>● {homeTeam}</span>
+        <span style={{ color: awayColor }}>● {awayTeam}</span>
       </div>
+      {varActive && (
+        <div className="absolute inset-0 z-20 bg-background/60 flex items-center justify-center">
+          <div className="text-center animate-pulse">
+            <span className="text-2xl">📺</span>
+            <p className="text-xs font-bold text-impact-high mt-1">VAR REVIEW</p>
+            <p className="text-[9px] text-muted-foreground">Penda Mode Active</p>
+          </div>
+        </div>
+      )}
       <svg viewBox="0 0 300 200" className="w-full" style={{ aspectRatio: '3/2' }}>
         <rect x="0" y="0" width="300" height="200" fill="hsl(142, 35%, 18%)" />
         <rect x="2" y="2" width="296" height="196" fill="none" className="stroke-pitch-line" strokeWidth="1" opacity="0.5" />
@@ -116,8 +129,6 @@ export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZon
         <rect x="2" y="75" width="15" height="50" fill="none" className="stroke-pitch-line" strokeWidth="0.6" opacity="0.3" />
         <rect x="258" y="50" width="40" height="100" fill="none" className="stroke-pitch-line" strokeWidth="0.8" opacity="0.4" />
         <rect x="283" y="75" width="15" height="50" fill="none" className="stroke-pitch-line" strokeWidth="0.6" opacity="0.3" />
-        <rect x="-2" y="85" width="4" height="30" fill="none" stroke="white" strokeWidth="0.8" opacity="0.6" />
-        <rect x="298" y="85" width="4" height="30" fill="none" stroke="white" strokeWidth="0.8" opacity="0.6" />
 
         {ZONES.map(zone => {
           const center = ZONE_CENTERS[zone.id];
@@ -149,9 +160,9 @@ export default function AnimatedPitch({ selectedZone, onZoneSelect, lastEventZon
           <g key={p.id}>
             <ellipse cx={p.x} cy={p.y + 3} rx="3.5" ry="1.5" fill="rgba(0,0,0,0.3)" />
             <circle cx={p.x} cy={p.y} r="4"
-              fill={p.team === 'home' ? 'hsl(200, 70%, 55%)' : 'hsl(0, 68%, 50%)'}
-              stroke={p.team === 'home' ? 'hsl(200, 70%, 70%)' : 'hsl(0, 50%, 70%)'}
-              strokeWidth="0.8"
+              fill={p.team === 'home' ? homeColor : awayColor}
+              stroke={p.team === 'home' ? homeColor : awayColor}
+              strokeWidth="0.8" strokeOpacity={0.5}
               style={{ transition: 'cx 0.1s linear, cy 0.1s linear' }} />
             <text x={p.x} y={p.y + 1.5} textAnchor="middle" fill="white" fontSize="3.5" fontWeight="700">
               {p.id < 11 ? p.id + 1 : p.id - 10}

@@ -1,12 +1,14 @@
-import { MatchEvent, EVENT_META } from '@/lib/match-engine';
+import { MatchEvent } from '@/lib/match-engine';
 
 interface StatsPanelProps {
   events: MatchEvent[];
   momentum: number;
   half: 1 | 2;
+  homeTeam: string;
+  awayTeam: string;
 }
 
-export default function StatsPanel({ events, momentum, half }: StatsPanelProps) {
+export default function StatsPanel({ events, momentum, half, homeTeam, awayTeam }: StatsPanelProps) {
   const halfEvents = events.filter(e => half === 1 ? e.minute <= 45 : e.minute > 45);
   const avgWeight = halfEvents.length > 0
     ? halfEvents.reduce((s, e) => s + e.weight.final, 0) / halfEvents.length
@@ -25,12 +27,11 @@ export default function StatsPanel({ events, momentum, half }: StatsPanelProps) 
     <div className="bg-card border border-border rounded-lg p-4">
       <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-3">Match Stats</h3>
 
-      {/* Momentum bar */}
       <div className="mb-3">
         <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-          <span className="text-gold">FC Dynamic</span>
+          <span className="text-gold">{homeTeam}</span>
           <span>Momentum</span>
-          <span className="text-gold">Micro United</span>
+          <span className="text-gold">{awayTeam}</span>
         </div>
         <div className="h-2 bg-secondary rounded-full overflow-hidden relative">
           <div
@@ -55,7 +56,6 @@ export default function StatsPanel({ events, momentum, half }: StatsPanelProps) 
         </div>
       </div>
 
-      {/* Impact breakdown */}
       <div className="flex items-center gap-3 text-[10px]">
         <div className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-[hsl(var(--impact-high))]" />
