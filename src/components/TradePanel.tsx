@@ -64,8 +64,8 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
             id: t.id, direction: t.direction,
             entryPrice: t.entryPrice, exitPrice: currentPrice,
             size: t.size, leverage: t.leverage,
-            pnl: -t.size, // Total loss = margin
-            reason: 'liquidated',
+            pnl: -t.size,
+            reason: 'liquidated' as const,
           });
         } else {
           stillOpen.push(t);
