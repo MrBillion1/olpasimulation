@@ -106,7 +106,7 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
       id: trade.id, direction: trade.direction,
       entryPrice: trade.entryPrice, exitPrice: currentPrice,
       size: trade.size, leverage: trade.leverage, pnl,
-      reason: 'manual',
+      reason: 'manual' as const,
     }, ...c].slice(0, 20));
   };
 
