@@ -11,13 +11,15 @@ export type EventType =
   | 'Goal' | 'Red Card' | 'Penalty' | 'Own Goal'
   | 'Shot on Target' | 'Corner' | 'Free Kick' | 'Yellow Card' | 'Offside'
   | 'Pass' | 'Tackle' | 'Dribble' | 'Substitution' | 'Clearance' | 'Cross'
-  | 'Long Ball' | 'Foul' | 'Save' | 'Header' | 'Throw-in' | 'Goal Kick';
+  | 'Long Ball' | 'Foul' | 'Save' | 'Header' | 'Throw-in' | 'Goal Kick'
+  | 'VAR Review';
 
 export type SignificanceType = 
   | 'No shift' | 'Build-up play' | 'Creates counter-attack' 
   | 'Momentum swing to home' | 'Momentum swing to away'
   | 'High goal-scoring chance' | 'Breaks defensive line' | 'Kills attack'
-  | 'Game-changing moment' | 'Tactical adjustment';
+  | 'Game-changing moment' | 'Tactical adjustment'
+  | 'VAR halt — Penda mode active';
 
 export interface WeightBreakdown {
   base: number;
@@ -49,11 +51,68 @@ export interface MatchState {
   momentum: number;
   isRunning: boolean;
   selectedZone: ZoneId;
+  varActive: boolean;
+  varMinutesLeft: number;
 }
 
-// Whether an event is "positive" for the team that produced it
-// Positive events from home push price UP; positive events from away push price DOWN
-// Negative events from home push price DOWN; negative events from away push price UP
+export interface MarketConfig {
+  id: string;
+  contract: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeShort: string;
+  awayShort: string;
+  homeColor: string;
+  awayColor: string;
+  startPrice: number;
+  scenario: 'balanced' | 'home-dominant' | 'away-dominant' | 'chaotic';
+  homePlayers: string[];
+  awayPlayers: string[];
+}
+
+export const MARKETS: MarketConfig[] = [
+  {
+    id: 'mcimun', contract: 'MCIMUN/USDT',
+    homeTeam: 'Man City', awayTeam: 'Man United',
+    homeShort: 'MCI', awayShort: 'MUN',
+    homeColor: 'hsl(200, 70%, 55%)', awayColor: 'hsl(0, 68%, 50%)',
+    startPrice: 100,
+    scenario: 'balanced',
+    homePlayers: ['De Bruyne', 'Haaland', 'Foden', 'Bernardo', 'Rodri', 'Walker', 'Stones', 'Dias', 'Grealish', 'Doku', 'Ederson'],
+    awayPlayers: ['Fernandes', 'Rashford', 'Garnacho', 'Mainoo', 'Casemiro', 'Shaw', 'Martínez', 'Varane', 'Mount', 'Højlund', 'Onana'],
+  },
+  {
+    id: 'rmabar', contract: 'RMABAR/USDT',
+    homeTeam: 'Real Madrid', awayTeam: 'Barcelona',
+    homeShort: 'RMA', awayShort: 'BAR',
+    homeColor: 'hsl(0, 0%, 95%)', awayColor: 'hsl(220, 80%, 45%)',
+    startPrice: 100,
+    scenario: 'home-dominant',
+    homePlayers: ['Bellingham', 'Vinícius Jr', 'Mbappé', 'Valverde', 'Modric', 'Tchouaméni', 'Carvajal', 'Rüdiger', 'Alaba', 'Mendy', 'Courtois'],
+    awayPlayers: ['Pedri', 'Yamal', 'Lewandowski', 'Gavi', 'De Jong', 'Raphinha', 'Araújo', 'Koundé', 'Balde', 'Christensen', 'Ter Stegen'],
+  },
+  {
+    id: 'acmint', contract: 'ACMINT/USDT',
+    homeTeam: 'AC Milan', awayTeam: 'Inter Milan',
+    homeShort: 'ACM', awayShort: 'INT',
+    homeColor: 'hsl(0, 68%, 42%)', awayColor: 'hsl(220, 60%, 40%)',
+    startPrice: 100,
+    scenario: 'away-dominant',
+    homePlayers: ['Leão', 'Giroud', 'Pulisic', 'Reijnders', 'Loftus-Cheek', 'Bennacer', 'Hernández', 'Tomori', 'Thiaw', 'Calabria', 'Maignan'],
+    awayPlayers: ['Lautaro', 'Thuram', 'Barella', 'Çalhanoğlu', 'Mkhitaryan', 'Dimarco', 'Bastoni', 'Acerbi', 'Pavard', 'Dumfries', 'Sommer'],
+  },
+  {
+    id: 'psgmar', contract: 'PSGMAR/USDT',
+    homeTeam: 'PSG', awayTeam: 'Marseille',
+    homeShort: 'PSG', awayShort: 'MAR',
+    homeColor: 'hsl(230, 60%, 45%)', awayColor: 'hsl(195, 80%, 50%)',
+    startPrice: 100,
+    scenario: 'chaotic',
+    homePlayers: ['Dembélé', 'Kolo Muani', 'Barcola', 'Vitinha', 'Zaïre-Emery', 'Hakimi', 'Marquinhos', 'Skriniar', 'Nuno Mendes', 'Ugarte', 'Donnarumma'],
+    awayPlayers: ['Aubameyang', 'Ünder', 'Sanchez', 'Guendouzi', 'Rongier', 'Clauss', 'Balerdi', 'Mbemba', 'Murillo', 'Ndiaye', 'Pau López'],
+  },
+];
+
 export const POSITIVE_EVENTS: Set<EventType> = new Set([
   'Goal', 'Shot on Target', 'Corner', 'Free Kick', 'Penalty',
   'Pass', 'Dribble', 'Cross', 'Header', 'Long Ball', 'Save', 'Tackle', 'Clearance',
@@ -63,20 +122,18 @@ export const NEGATIVE_EVENTS: Set<EventType> = new Set([
   'Red Card', 'Own Goal', 'Yellow Card', 'Foul', 'Offside',
 ]);
 
-// Neutral: Substitution, Throw-in, Goal Kick — small random direction
-
 export function getEventSentiment(type: EventType): 'positive' | 'negative' | 'neutral' {
   if (POSITIVE_EVENTS.has(type)) return 'positive';
   if (NEGATIVE_EVENTS.has(type)) return 'negative';
   return 'neutral';
 }
 
-// Event metadata with impact tiers and emoji
 export const EVENT_META: Record<EventType, { base: number; impact: ImpactTier; emoji: string }> = {
   'Goal':            { base: 0.28, impact: 'high',   emoji: '⚽' },
   'Red Card':        { base: 0.15, impact: 'high',   emoji: '🟥' },
   'Penalty':         { base: 0.30, impact: 'high',   emoji: '⚠️' },
   'Own Goal':        { base: 0.12, impact: 'high',   emoji: '⚽' },
+  'VAR Review':      { base: 0.20, impact: 'high',   emoji: '📺' },
   'Shot on Target':  { base: 0.42, impact: 'medium', emoji: '🎯' },
   'Corner':          { base: 0.72, impact: 'medium', emoji: '📐' },
   'Free Kick':       { base: 0.55, impact: 'medium', emoji: '🦶' },
@@ -106,7 +163,7 @@ export const SIGNIFICANCE_TYPES: SignificanceType[] = [
   'No shift', 'Build-up play', 'Creates counter-attack',
   'Momentum swing to home', 'Momentum swing to away',
   'High goal-scoring chance', 'Breaks defensive line', 'Kills attack',
-  'Game-changing moment', 'Tactical adjustment',
+  'Game-changing moment', 'Tactical adjustment', 'VAR halt — Penda mode active',
 ];
 
 export const ZONES: { id: ZoneId; label: string; row: number; col: number }[] = [
@@ -128,7 +185,7 @@ const ZONE_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
     'Pass': 0.10, 'Tackle': 0.15, 'Dribble': -0.10,
     'Cross': -0.15, 'Long Ball': 0.05, 'Clearance': 0.20, 'Foul': 0.10,
     'Save': 0.15, 'Header': -0.10, 'Yellow Card': 0.05, 'Offside': 0.00,
-    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.05,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.05, 'VAR Review': 0.00,
   },
   'mid': {
     'Goal': -0.05, 'Red Card': 0.00, 'Penalty': -0.10, 'Own Goal': 0.00,
@@ -136,7 +193,7 @@ const ZONE_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
     'Pass': 0.05, 'Tackle': 0.05, 'Dribble': 0.10,
     'Cross': 0.05, 'Long Ball': 0.10, 'Clearance': 0.00, 'Foul': 0.00,
     'Save': -0.05, 'Header': 0.05, 'Yellow Card': 0.00, 'Offside': 0.00,
-    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.00,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': 0.00, 'VAR Review': 0.00,
   },
   'att': {
     'Goal': 0.20, 'Red Card': -0.05, 'Penalty': 0.25, 'Own Goal': -0.05,
@@ -144,7 +201,7 @@ const ZONE_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
     'Pass': -0.05, 'Tackle': -0.10, 'Dribble': 0.15,
     'Cross': 0.20, 'Long Ball': -0.10, 'Clearance': -0.20, 'Foul': -0.05,
     'Save': -0.15, 'Header': 0.20, 'Yellow Card': -0.05, 'Offside': 0.05,
-    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': -0.05,
+    'Substitution': 0.00, 'Throw-in': 0.00, 'Goal Kick': -0.05, 'VAR Review': 0.10,
   },
 };
 
@@ -159,6 +216,7 @@ const SIGNIFICANCE_MODIFIERS: Record<SignificanceType, number> = {
   'Kills attack': -0.12,
   'Game-changing moment': 0.35,
   'Tactical adjustment': 0.05,
+  'VAR halt — Penda mode active': 0.00,
 };
 
 export function getZoneModifier(zone: ZoneId, eventType: EventType): number {
@@ -170,14 +228,14 @@ export function getTimeModifier(minute: number, eventType: EventType): number {
   const meta = EVENT_META[eventType];
   if (minute <= 15) {
     return meta.impact === 'high' ? -0.05 : -0.08;
+  } else if (minute >= 85) {
+    return meta.impact === 'high' ? 0.25 : 0.10;
   } else if (minute >= 75) {
     if (meta.impact === 'high') return 0.15;
     if (meta.impact === 'medium') return 0.05;
     return -0.05;
   } else if (minute >= 40 && minute <= 48) {
     return 0.08;
-  } else if (minute >= 85) {
-    return meta.impact === 'high' ? 0.25 : 0.10;
   }
   return 0;
 }
@@ -205,12 +263,14 @@ export function getSignificanceDescription(sig: SignificanceType, weight: number
     case 'Kills attack': return `Neutralizes threat, ${Math.round((1 - weight) * 100)}% reset`;
     case 'Game-changing moment': return `Match dynamics shift dramatically — ${pct}% impact`;
     case 'Tactical adjustment': return `Minor tactical shift, ${pct}% continuation`;
+    case 'VAR halt — Penda mode active': return `⏸ Match halted for VAR review — Penda adaptive mode active. All markets frozen.`;
     default: return `Neutral play continuation at ${pct}% success rate`;
   }
 }
 
-export function pickRandomEvent(): EventType {
-  const weights: [EventType, number][] = [
+// Scenario-aware event picker
+export function pickRandomEvent(scenario: MarketConfig['scenario'], minute: number): EventType {
+  let weights: [EventType, number][] = [
     ['Pass', 22], ['Tackle', 8], ['Foul', 6], ['Throw-in', 5], ['Goal Kick', 4],
     ['Clearance', 6], ['Long Ball', 4], ['Yellow Card', 3], ['Offside', 3],
     ['Substitution', 2],
@@ -218,6 +278,42 @@ export function pickRandomEvent(): EventType {
     ['Dribble', 6], ['Save', 3], ['Header', 4],
     ['Goal', 2], ['Red Card', 0.5], ['Penalty', 1], ['Own Goal', 0.3],
   ];
+
+  // Scenario adjustments
+  if (scenario === 'chaotic') {
+    weights = weights.map(([t, w]) => {
+      if (t === 'Goal') return [t, w * 2];
+      if (t === 'Red Card') return [t, w * 3];
+      if (t === 'Foul') return [t, w * 2];
+      if (t === 'Yellow Card') return [t, w * 2];
+      if (t === 'Penalty') return [t, w * 2.5];
+      return [t, w];
+    });
+  } else if (scenario === 'home-dominant') {
+    weights = weights.map(([t, w]) => {
+      if (t === 'Shot on Target') return [t, w * 1.5];
+      if (t === 'Corner') return [t, w * 1.3];
+      if (t === 'Dribble') return [t, w * 1.3];
+      return [t, w];
+    });
+  } else if (scenario === 'away-dominant') {
+    weights = weights.map(([t, w]) => {
+      if (t === 'Clearance') return [t, w * 1.5];
+      if (t === 'Save') return [t, w * 1.8];
+      if (t === 'Tackle') return [t, w * 1.3];
+      return [t, w];
+    });
+  }
+
+  // Late game tension
+  if (minute > 80) {
+    weights = weights.map(([t, w]) => {
+      if (t === 'Foul') return [t, w * 1.5];
+      if (t === 'Goal') return [t, w * 1.3];
+      return [t, w];
+    });
+  }
+
   const total = weights.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
   for (const [type, w] of weights) {
@@ -227,11 +323,22 @@ export function pickRandomEvent(): EventType {
   return 'Pass';
 }
 
+// Scenario-aware team picker (some scenarios bias toward one team)
+export function pickTeam(scenario: MarketConfig['scenario']): 'home' | 'away' {
+  switch (scenario) {
+    case 'home-dominant': return Math.random() > 0.35 ? 'home' : 'away';
+    case 'away-dominant': return Math.random() > 0.65 ? 'home' : 'away';
+    case 'chaotic': return Math.random() > 0.5 ? 'home' : 'away';
+    default: return Math.random() > 0.5 ? 'home' : 'away';
+  }
+}
+
 export function pickRandomZone(): ZoneId {
   return ZONES[Math.floor(Math.random() * ZONES.length)].id;
 }
 
 export function pickRandomSignificance(eventType: EventType): SignificanceType {
+  if (eventType === 'VAR Review') return 'VAR halt — Penda mode active';
   const meta = EVENT_META[eventType];
   if (meta.impact === 'high') {
     const opts: SignificanceType[] = ['Game-changing moment', 'High goal-scoring chance', 'Momentum swing to home', 'Momentum swing to away'];
@@ -249,5 +356,6 @@ export function createInitialState(): MatchState {
   return {
     minute: 0, homeScore: 0, awayScore: 0, half: 1,
     events: [], momentum: 0, isRunning: false, selectedZone: 'mid-center',
+    varActive: false, varMinutesLeft: 0,
   };
 }

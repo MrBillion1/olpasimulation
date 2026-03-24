@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  MatchState, MatchEvent, EventType, ZoneId, SignificanceType,
+  MatchState, MatchEvent, EventType, ZoneId, SignificanceType, MarketConfig,
   createInitialState, calculateWeight, pickRandomEvent, pickRandomZone,
   pickRandomSignificance, getSignificanceDescription, EVENT_META, getEventSentiment,
+  MARKETS, pickTeam,
 } from '@/lib/match-engine';
 import MatchHeader from '@/components/MatchHeader';
 import AnimatedPitch from '@/components/AnimatedPitch';
@@ -13,9 +14,7 @@ import StatsPanel from '@/components/StatsPanel';
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
 import OrderBook from '@/components/OrderBook';
-
-let eventCounter = 0;
-const START_PRICE = 100;
+import MarketSelector from '@/components/MarketSelector';
 
 interface PricePoint {
   minute: number;
@@ -23,59 +22,127 @@ interface PricePoint {
   event?: string;
 }
 
+interface MarketRuntime {
+  state: MatchState;
+  priceHistory: PricePoint[];
+  currentPrice: number;
+  lastDirection: number;
+  eventCounter: number;
+}
+
+function createRuntime(config: MarketConfig): MarketRuntime {
+  return {
+    state: createInitialState(),
+    priceHistory: [{ minute: 0, price: config.startPrice }],
+    currentPrice: config.startPrice,
+    lastDirection: 0,
+    eventCounter: 0,
+  };
+}
+
 export default function Index() {
-  const [state, setState] = useState<MatchState>(createInitialState);
-  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([{ minute: 0, price: START_PRICE }]);
-  const [currentPrice, setCurrentPrice] = useState(START_PRICE);
-  const [lastDirection, setLastDirection] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeMarketId, setActiveMarketId] = useState(MARKETS[0].id);
+  const [runtimes, setRuntimes] = useState<Record<string, MarketRuntime>>(() => {
+    const r: Record<string, MarketRuntime> = {};
+    MARKETS.forEach(m => { r[m.id] = createRuntime(m); });
+    return r;
+  });
+
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const eventTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // Clock tick
+  const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
+  const activeRuntime = runtimes[activeMarketId];
+
+  // Clock tick for all running markets — 2 min match = 1.33s per minute
   useEffect(() => {
-    if (state.isRunning) {
-      clockRef.current = setInterval(() => {
-        setState(s => {
-          const next = s.minute + 1;
-          if (next > 90) return { ...s, isRunning: false };
-          return { ...s, minute: next, half: next > 45 ? 2 : 1 };
-        });
-      }, 2000);
-    }
-    return () => { if (clockRef.current) clearInterval(clockRef.current); };
-  }, [state.isRunning]);
+    clockRef.current = setInterval(() => {
+      setRuntimes(prev => {
+        const next = { ...prev };
+        let changed = false;
+        MARKETS.forEach(m => {
+          const rt = next[m.id];
+          if (!rt.state.isRunning) return;
 
-  const fireEvent = useCallback((type?: EventType, zone?: ZoneId, sig?: SignificanceType) => {
-    setState(prev => {
-      const eventType = type ?? pickRandomEvent();
-      const eventZone = zone ?? (prev.isRunning ? pickRandomZone() : prev.selectedZone);
+          // Handle VAR countdown
+          if (rt.state.varActive) {
+            if (rt.state.varMinutesLeft <= 1) {
+              next[m.id] = {
+                ...rt,
+                state: { ...rt.state, varActive: false, varMinutesLeft: 0 },
+              };
+            } else {
+              next[m.id] = {
+                ...rt,
+                state: { ...rt.state, varMinutesLeft: rt.state.varMinutesLeft - 1 },
+              };
+            }
+            changed = true;
+            return; // Don't advance minute during VAR
+          }
+
+          const nextMin = rt.state.minute + 1;
+          if (nextMin > 90) {
+            next[m.id] = { ...rt, state: { ...rt.state, isRunning: false } };
+          } else {
+            next[m.id] = {
+              ...rt,
+              state: { ...rt.state, minute: nextMin, half: nextMin > 45 ? 2 : 1 },
+            };
+          }
+          changed = true;
+        });
+        return changed ? next : prev;
+      });
+    }, 1333); // 90 min / 2 min = 1.33s per game minute
+    return () => { if (clockRef.current) clearInterval(clockRef.current); };
+  }, []);
+
+  const fireEvent = useCallback((marketId: string, type?: EventType, zone?: ZoneId, sig?: SignificanceType) => {
+    setRuntimes(prev => {
+      const rt = prev[marketId];
+      const market = MARKETS.find(m => m.id === marketId)!;
+      if (!rt) return prev;
+
+      // Don't fire events during VAR
+      if (rt.state.varActive) return prev;
+
+      const eventType = type ?? pickRandomEvent(market.scenario, rt.state.minute);
+      const eventZone = zone ?? (rt.state.isRunning ? pickRandomZone() : rt.state.selectedZone);
       const eventSig = sig ?? pickRandomSignificance(eventType);
-      const weight = calculateWeight(eventType, eventZone, eventSig, prev.minute);
-      const team = Math.random() > 0.5 ? 'home' as const : 'away' as const;
+      const weight = calculateWeight(eventType, eventZone, eventSig, rt.state.minute);
+      const team = pickTeam(market.scenario);
       const meta = EVENT_META[eventType];
 
+      const newCounter = rt.eventCounter + 1;
       const ev: MatchEvent = {
-        id: `evt-${++eventCounter}`,
+        id: `${marketId}-evt-${newCounter}`,
         type: eventType, zone: eventZone, significance: eventSig,
-        minute: prev.minute, weight, team,
+        minute: rt.state.minute, weight, team,
         description: getSignificanceDescription(eventSig, weight.final),
         impact: meta.impact, emoji: meta.emoji,
       };
 
       const momentumDelta = team === 'home' ? weight.final * 0.05 : -weight.final * 0.05;
-      const newMomentum = Math.max(-1, Math.min(1, prev.momentum + momentumDelta));
+      const newMomentum = Math.max(-1, Math.min(1, rt.state.momentum + momentumDelta));
 
-      let homeScore = prev.homeScore;
-      let awayScore = prev.awayScore;
+      let homeScore = rt.state.homeScore;
+      let awayScore = rt.state.awayScore;
       if (eventType === 'Goal') { if (team === 'home') homeScore++; else awayScore++; }
       if (eventType === 'Own Goal') { if (team === 'home') awayScore++; else homeScore++; }
       if (eventType === 'Penalty' && Math.random() < weight.final * 0.7) {
         if (team === 'home') homeScore++; else awayScore++;
       }
 
-      // Price logic:
-      // Positive home event → price UP, Negative home event → price DOWN
-      // Positive away event → price DOWN, Negative away event → price UP
+      // Check for random VAR trigger (about 3% chance on high-impact events)
+      let varActive = false;
+      let varMinutesLeft = 0;
+      if (meta.impact === 'high' && Math.random() < 0.15) {
+        varActive = true;
+        varMinutesLeft = 2 + Math.floor(Math.random() * 3); // 2-4 game minutes
+      }
+
+      // Price movement
       const sentiment = getEventSentiment(eventType);
       const impactMultiplier = meta.impact === 'high' ? 3 : meta.impact === 'medium' ? 1.5 : 0.5;
       const priceMove = weight.final * impactMultiplier * (0.5 + Math.random() * 0.5);
@@ -89,104 +156,236 @@ export default function Index() {
         direction = Math.random() > 0.5 ? 0.3 : -0.3;
       }
 
-      setLastDirection(direction);
-      setCurrentPrice(p => {
-        const newPrice = Math.max(10, p + priceMove * direction);
-        const rounded = Math.round(newPrice * 100) / 100;
-        setPriceHistory(h => [...h, { minute: prev.minute, price: rounded, event: eventType }]);
-        return rounded;
-      });
+      const newPrice = Math.max(10, Math.round((rt.currentPrice + priceMove * direction) * 100) / 100);
+      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType }];
+
+      // If VAR triggered, add a VAR event right after
+      const events = [...rt.state.events, ev];
+      if (varActive) {
+        const varEv: MatchEvent = {
+          id: `${marketId}-var-${newCounter}`,
+          type: 'VAR Review', zone: eventZone, significance: 'VAR halt — Penda mode active',
+          minute: rt.state.minute,
+          weight: calculateWeight('VAR Review', eventZone, 'VAR halt — Penda mode active', rt.state.minute),
+          team, description: '⏸ Match halted for VAR review — Penda adaptive mode active. All markets frozen.',
+          impact: 'high', emoji: '📺',
+        };
+        events.push(varEv);
+      }
 
       return {
-        ...prev, events: [...prev.events, ev], momentum: newMomentum,
-        homeScore, awayScore, selectedZone: eventZone,
+        ...prev,
+        [marketId]: {
+          state: {
+            ...rt.state, events, momentum: newMomentum,
+            homeScore, awayScore, selectedZone: eventZone,
+            varActive, varMinutesLeft,
+          },
+          priceHistory: newHistory,
+          currentPrice: newPrice,
+          lastDirection: direction,
+          eventCounter: newCounter,
+        },
       };
     });
   }, []);
 
-  // Auto-play
+  // Auto-play for all running markets — 1.25x faster events
   useEffect(() => {
-    if (state.isRunning) {
-      const delay = 1500 + Math.random() * 2500;
-      intervalRef.current = setTimeout(() => fireEvent(), delay);
-    }
-    return () => { if (intervalRef.current) clearTimeout(intervalRef.current); };
-  }, [state.isRunning, state.events.length, fireEvent]);
+    MARKETS.forEach(m => {
+      const rt = runtimes[m.id];
+      if (rt.state.isRunning && !rt.state.varActive) {
+        const delay = 1200 + Math.random() * 2000; // ~1.2-3.2s
+        eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
+      }
+    });
+    return () => {
+      Object.values(eventTimers.current).forEach(t => clearTimeout(t));
+      eventTimers.current = {};
+    };
+  }, [
+    ...MARKETS.map(m => runtimes[m.id]?.state.events.length),
+    ...MARKETS.map(m => runtimes[m.id]?.state.isRunning),
+    ...MARKETS.map(m => runtimes[m.id]?.state.varActive),
+    fireEvent,
+  ]);
 
-  const toggleAutoPlay = () => setState(s => ({ ...s, isRunning: !s.isRunning }));
-  const resetMatch = () => {
-    eventCounter = 0;
-    setState(createInitialState());
-    setPriceHistory([{ minute: 0, price: START_PRICE }]);
-    setCurrentPrice(START_PRICE);
-    setLastDirection(0);
+  const toggleAutoPlay = (marketId: string) => {
+    setRuntimes(prev => ({
+      ...prev,
+      [marketId]: {
+        ...prev[marketId],
+        state: { ...prev[marketId].state, isRunning: !prev[marketId].state.isRunning },
+      },
+    }));
   };
-  const selectZone = (zone: ZoneId) => setState(s => ({ ...s, selectedZone: zone }));
 
-  const latestEvent = state.events[state.events.length - 1];
+  const startAll = () => {
+    setRuntimes(prev => {
+      const next = { ...prev };
+      MARKETS.forEach(m => {
+        next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
+      });
+      return next;
+    });
+  };
+
+  const resetMatch = (marketId: string) => {
+    const market = MARKETS.find(m => m.id === marketId)!;
+    setRuntimes(prev => ({ ...prev, [marketId]: createRuntime(market) }));
+  };
+
+  const selectZone = (zone: ZoneId) => {
+    setRuntimes(prev => ({
+      ...prev,
+      [activeMarketId]: {
+        ...prev[activeMarketId],
+        state: { ...prev[activeMarketId].state, selectedZone: zone },
+      },
+    }));
+  };
+
+  const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
+
+  // Collect prices for market selector
+  const prices: Record<string, number> = {};
+  const priceChanges: Record<string, number> = {};
+  const matchMinutes: Record<string, number> = {};
+  const isRunningMap: Record<string, boolean> = {};
+  MARKETS.forEach(m => {
+    const rt = runtimes[m.id];
+    prices[m.id] = rt.currentPrice;
+    priceChanges[m.id] = rt.currentPrice - m.startPrice;
+    matchMinutes[m.id] = rt.state.minute;
+    isRunningMap[m.id] = rt.state.isRunning;
+  });
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="border-b border-[hsl(var(--gold-muted))] bg-card/80 px-4 py-2">
         <p className="text-[11px] text-gold text-center tracking-wide font-medium">
-          MCIMUN/USDT — Man City vs Man United • Advanced Micro-Event DEX Demo
+          {activeMarket.contract} — {activeMarket.homeTeam} vs {activeMarket.awayTeam} • Advanced Micro-Event DEX Demo • From OLPA DEX Concept
         </p>
       </div>
 
       <div className="flex-1 p-3 max-w-[1600px] mx-auto w-full">
+        {/* Market selector cards */}
+        <div className="mb-3 flex items-center gap-3">
+          <MarketSelector
+            markets={MARKETS}
+            activeMarketId={activeMarketId}
+            onSelectMarket={setActiveMarketId}
+            prices={prices}
+            priceChanges={priceChanges}
+            matchMinutes={matchMinutes}
+            isRunning={isRunningMap}
+          />
+          <button
+            onClick={startAll}
+            className="shrink-0 bg-gold text-primary-foreground font-semibold text-[10px] px-3 py-2 rounded-md
+                       hover:brightness-110 active:scale-[0.97] transition-all uppercase tracking-wider"
+          >
+            ▶ Start All
+          </button>
+        </div>
+
+        {/* VAR Banner */}
+        {activeRuntime.state.varActive && (
+          <div className="bg-[hsl(var(--impact-high)/0.12)] border border-[hsl(var(--impact-high)/0.4)] rounded-lg p-3 mb-3 animate-impact-pulse">
+            <div className="flex items-center justify-center gap-3">
+              <span className="text-xl">📺</span>
+              <div className="text-center">
+                <p className="text-sm font-bold text-impact-high">VAR REVIEW — PENDA MODE ACTIVE</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Match halted • Market frozen • Adaptive weight recalibration in progress • 
+                  <span className="text-gold font-mono font-bold ml-1">{activeRuntime.state.varMinutesLeft} min remaining</span>
+                </p>
+              </div>
+              <span className="text-xl">📺</span>
+            </div>
+          </div>
+        )}
+
         <MatchHeader
-          minute={state.minute} homeScore={state.homeScore} awayScore={state.awayScore}
-          half={state.half} isRunning={state.isRunning}
+          minute={activeRuntime.state.minute}
+          homeScore={activeRuntime.state.homeScore}
+          awayScore={activeRuntime.state.awayScore}
+          half={activeRuntime.state.half}
+          isRunning={activeRuntime.state.isRunning}
+          homeTeam={activeMarket.homeTeam}
+          awayTeam={activeMarket.awayTeam}
+          homeColor={activeMarket.homeColor}
+          awayColor={activeMarket.awayColor}
+          contract={activeMarket.contract}
+          varActive={activeRuntime.state.varActive}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 mt-3">
-          {/* Main area */}
           <div className="space-y-3">
-            {/* Pitch + Price chart */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <AnimatedPitch
-                selectedZone={state.selectedZone} onZoneSelect={selectZone}
-                lastEventZone={latestEvent?.zone} lastEventTeam={latestEvent?.team}
-                isRunning={state.isRunning} minute={state.minute}
+                selectedZone={activeRuntime.state.selectedZone}
+                onZoneSelect={selectZone}
+                lastEventZone={latestEvent?.zone}
+                lastEventTeam={latestEvent?.team}
+                isRunning={activeRuntime.state.isRunning}
+                minute={activeRuntime.state.minute}
                 ballZone={latestEvent?.zone ?? 'mid-center'}
+                homeTeam={activeMarket.homeShort}
+                awayTeam={activeMarket.awayShort}
+                homeColor={activeMarket.homeColor}
+                awayColor={activeMarket.awayColor}
+                varActive={activeRuntime.state.varActive}
               />
               <PriceChart
-                priceHistory={priceHistory}
-                currentPrice={currentPrice}
-                startPrice={START_PRICE}
+                priceHistory={activeRuntime.priceHistory}
+                currentPrice={activeRuntime.currentPrice}
+                startPrice={activeMarket.startPrice}
               />
             </div>
 
-            {/* Commentary */}
-            <Commentary events={state.events} />
+            <Commentary
+              events={activeRuntime.state.events}
+              homeTeam={activeMarket.homeTeam}
+              awayTeam={activeMarket.awayTeam}
+              homePlayers={activeMarket.homePlayers}
+              awayPlayers={activeMarket.awayPlayers}
+            />
 
-            {/* Controls + Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <ControlsPanel
-                isRunning={state.isRunning} onToggleAutoPlay={toggleAutoPlay}
-                onTriggerEvent={() => fireEvent()} onReset={resetMatch}
-                onManualEvent={(t, z, s) => fireEvent(t, z, s)}
-                selectedZone={state.selectedZone}
+                isRunning={activeRuntime.state.isRunning}
+                onToggleAutoPlay={() => toggleAutoPlay(activeMarketId)}
+                onTriggerEvent={() => fireEvent(activeMarketId)}
+                onReset={() => resetMatch(activeMarketId)}
+                onManualEvent={(t, z, s) => fireEvent(activeMarketId, t, z, s)}
+                selectedZone={activeRuntime.state.selectedZone}
               />
-              <StatsPanel events={state.events} momentum={state.momentum} half={state.half} />
+              <StatsPanel
+                events={activeRuntime.state.events}
+                momentum={activeRuntime.state.momentum}
+                half={activeRuntime.state.half}
+                homeTeam={activeMarket.homeTeam}
+                awayTeam={activeMarket.awayTeam}
+              />
             </div>
 
-            {/* Legend */}
             <div className="bg-card border border-[hsl(var(--gold-muted))] rounded-lg p-3">
               <div className="flex items-start gap-4 flex-wrap">
                 <div className="flex-1 min-w-[200px]">
                   <h4 className="text-[10px] uppercase tracking-widest text-gold font-semibold mb-1">Price Logic</h4>
                   <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                    <span className="text-accent">City positive events → price ↑</span> •
-                    <span className="text-destructive ml-1">City negative events → price ↓</span><br />
-                    <span className="text-destructive">United positive events → price ↓</span> •
-                    <span className="text-accent ml-1">United negative events → price ↑</span>
+                    <span className="text-accent">{activeMarket.homeTeam} positive → price ↑</span> •
+                    <span className="text-destructive ml-1">{activeMarket.homeTeam} negative → price ↓</span><br />
+                    <span className="text-destructive">{activeMarket.awayTeam} positive → price ↓</span> •
+                    <span className="text-accent ml-1">{activeMarket.awayTeam} negative → price ↑</span>
                   </p>
                 </div>
                 <div className="flex-1 min-w-[200px]">
-                  <h4 className="text-[10px] uppercase tracking-widest text-gold font-semibold mb-1">Dynamic Weight</h4>
+                  <h4 className="text-[10px] uppercase tracking-widest text-gold font-semibold mb-1">Dynamic Weight + Penda</h4>
                   <div className="font-mono text-[10px] text-foreground/80 bg-secondary/50 rounded-md p-2 border border-border">
-                    <span className="text-gold">final_weight</span> = base + zone + sig + time
+                    <span className="text-gold">final_weight</span> = base + zone + sig + time<br />
+                    <span className="text-impact-high">VAR halt</span> = Penda mode freezes market
                   </div>
                 </div>
                 <div className="flex gap-3 text-[10px] items-center">
@@ -198,16 +397,22 @@ export default function Index() {
             </div>
           </div>
 
-          {/* Right sidebar */}
           <div className="space-y-3">
-            <TradePanel currentPrice={currentPrice} latestEvent={latestEvent} />
+            <TradePanel
+              currentPrice={activeRuntime.currentPrice}
+              latestEvent={latestEvent}
+              contract={activeMarket.contract}
+              homeTeam={activeMarket.homeTeam}
+              awayTeam={activeMarket.awayTeam}
+            />
             <OrderBook
-              currentPrice={currentPrice}
+              currentPrice={activeRuntime.currentPrice}
               lastEventImpact={latestEvent?.impact}
-              lastEventDirection={lastDirection}
+              lastEventDirection={activeRuntime.lastDirection}
+              contract={activeMarket.contract.split('/')[0]}
             />
             <div className="bg-surface-elevated rounded-lg border border-border p-3 max-h-[400px] flex flex-col">
-              <EventFeed events={state.events} />
+              <EventFeed events={activeRuntime.state.events} />
             </div>
           </div>
         </div>

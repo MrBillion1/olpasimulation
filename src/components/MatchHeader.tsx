@@ -6,9 +6,15 @@ interface MatchHeaderProps {
   awayScore: number;
   half: 1 | 2;
   isRunning: boolean;
+  homeTeam: string;
+  awayTeam: string;
+  homeColor: string;
+  awayColor: string;
+  contract: string;
+  varActive: boolean;
 }
 
-export default function MatchHeader({ minute, homeScore, awayScore, half, isRunning }: MatchHeaderProps) {
+export default function MatchHeader({ minute, homeScore, awayScore, half, isRunning, homeTeam, awayTeam, homeColor, awayColor, contract, varActive }: MatchHeaderProps) {
   const [blink, setBlink] = useState(true);
 
   useEffect(() => {
@@ -19,23 +25,25 @@ export default function MatchHeader({ minute, homeScore, awayScore, half, isRunn
 
   return (
     <div className="bg-card rounded-lg border border-border overflow-hidden">
-      {/* Market contract bar */}
       <div className="bg-secondary/60 border-b border-border px-4 py-1.5 flex items-center justify-center gap-2">
-        <span className="font-mono text-xs font-bold text-gold tracking-wider">MCIMUN/USDT</span>
+        <span className="font-mono text-xs font-bold text-gold tracking-wider">{contract}</span>
         <span className="text-[9px] text-muted-foreground">• Micro-Event Market</span>
+        {varActive && (
+          <span className="text-[9px] text-impact-high font-bold ml-2 animate-pulse">⏸ VAR</span>
+        )}
       </div>
 
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3">
-          <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-accent animate-pulse' : 'bg-muted-foreground'}`} />
+          <div className={`w-2 h-2 rounded-full ${varActive ? 'bg-impact-high animate-pulse' : isRunning ? 'bg-accent animate-pulse' : 'bg-muted-foreground'}`} />
           <span className="text-xs uppercase tracking-widest text-muted-foreground font-medium">
-            {isRunning ? 'Live' : 'Paused'}
+            {varActive ? 'VAR' : isRunning ? 'Live' : 'Paused'}
           </span>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
-            <span className="text-lg font-bold tracking-tight text-[hsl(var(--sky-blue))]">Man City</span>
+            <span className="text-lg font-bold tracking-tight" style={{ color: homeColor }}>{homeTeam}</span>
             <p className="text-[9px] text-muted-foreground">Home</p>
           </div>
           <div className="flex items-center gap-3 bg-secondary rounded-md px-4 py-1.5 border border-[hsl(var(--gold-muted))]">
@@ -44,7 +52,7 @@ export default function MatchHeader({ minute, homeScore, awayScore, half, isRunn
             <span className="text-2xl font-black tabular-nums">{awayScore}</span>
           </div>
           <div className="text-left">
-            <span className="text-lg font-bold tracking-tight text-destructive">Man United</span>
+            <span className="text-lg font-bold tracking-tight" style={{ color: awayColor }}>{awayTeam}</span>
             <p className="text-[9px] text-muted-foreground">Away</p>
           </div>
         </div>
