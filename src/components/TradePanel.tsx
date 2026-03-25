@@ -105,7 +105,7 @@ export default function TradePanel({
     setClosedTrades(c => [{
       id: trade.id, contract: trade.contract, direction: trade.direction,
       entryPrice: trade.entryPrice, exitPrice: mPrice,
-      size: trade.size, leverage: trade.leverage, pnl, reason: 'manual',
+      size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
     }, ...c].slice(0, 50));
   };
 
