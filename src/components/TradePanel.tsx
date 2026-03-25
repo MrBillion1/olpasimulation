@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MatchEvent, getEventSentiment } from '@/lib/match-engine';
+import { useState, useEffect } from 'react';
+import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
 
-interface OpenTrade {
+export interface OpenTrade {
   id: number;
+  marketId: string;
+  contract: string;
   direction: 'long' | 'short';
   entryPrice: number;
   size: number;
@@ -12,8 +14,9 @@ interface OpenTrade {
   liquidationPrice: number;
 }
 
-interface ClosedTrade {
+export interface ClosedTrade {
   id: number;
+  contract: string;
   direction: 'long' | 'short';
   entryPrice: number;
   exitPrice: number;
@@ -24,106 +27,102 @@ interface ClosedTrade {
 }
 
 interface TradePanelProps {
-  currentPrice: number;
-  latestEvent?: MatchEvent;
-  contract: string;
-  homeTeam: string;
-  awayTeam: string;
+  activeMarket: MarketConfig;
+  prices: Record<string, number>;
+  latestEvents: Record<string, MatchEvent | undefined>;
+  balance: number;
+  setBalance: (fn: (b: number) => number) => void;
+  openTrades: OpenTrade[];
+  setOpenTrades: React.Dispatch<React.SetStateAction<OpenTrade[]>>;
+  closedTrades: ClosedTrade[];
+  setClosedTrades: React.Dispatch<React.SetStateAction<ClosedTrade[]>>;
 }
 
 let tradeIdCounter = 0;
 
-export default function TradePanel({ currentPrice, latestEvent, contract, homeTeam, awayTeam }: TradePanelProps) {
-  const [balance, setBalance] = useState(10000);
+export default function TradePanel({
+  activeMarket, prices, latestEvents, balance, setBalance,
+  openTrades, setOpenTrades, closedTrades, setClosedTrades,
+}: TradePanelProps) {
   const [tradeSize, setTradeSize] = useState(100);
   const [leverage, setLeverage] = useState(5);
-  const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
-  const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
 
-  // Calculate liquidation price: when loss = margin (position size)
-  // For long: liq = entry * (1 - 1/leverage)
-  // For short: liq = entry * (1 + 1/leverage)
+  const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
+  const latestEvent = latestEvents[activeMarket.id];
+
   const calcLiqPrice = (entry: number, dir: 'long' | 'short', lev: number) => {
-    if (dir === 'long') return Math.round(entry * (1 - 1 / lev) * 100) / 100;
-    return Math.round(entry * (1 + 1 / lev) * 100) / 100;
+    if (dir === 'long') return Math.round(entry * (1 - 1 / lev) * 10000) / 10000;
+    return Math.round(entry * (1 + 1 / lev) * 10000) / 10000;
   };
 
-  // Auto-liquidation check
+  // Auto-liquidation across ALL markets
   useEffect(() => {
     setOpenTrades(prev => {
       const stillOpen: OpenTrade[] = [];
       const newClosed: ClosedTrade[] = [];
-      
       prev.forEach(t => {
+        const mPrice = prices[t.marketId] ?? 0;
         const isLiquidated = t.direction === 'long'
-          ? currentPrice <= t.liquidationPrice
-          : currentPrice >= t.liquidationPrice;
-        
+          ? mPrice <= t.liquidationPrice
+          : mPrice >= t.liquidationPrice;
         if (isLiquidated) {
           newClosed.push({
-            id: t.id, direction: t.direction,
-            entryPrice: t.entryPrice, exitPrice: currentPrice,
-            size: t.size, leverage: t.leverage,
-            pnl: -t.size,
-            reason: 'liquidated' as const,
+            id: t.id, contract: t.contract, direction: t.direction,
+            entryPrice: t.entryPrice, exitPrice: mPrice,
+            size: t.size, leverage: t.leverage, pnl: -t.size, reason: 'liquidated',
           });
         } else {
           stillOpen.push(t);
         }
       });
-
       if (newClosed.length > 0) {
-        setClosedTrades(c => [...newClosed, ...c].slice(0, 20));
-        // Liquidated positions lose entire margin — no return
+        setClosedTrades(c => [...newClosed, ...c].slice(0, 50));
       }
       return stillOpen;
     });
-  }, [currentPrice]);
+  }, [prices, setOpenTrades, setClosedTrades]);
 
   const openTrade = (direction: 'long' | 'short') => {
     if (tradeSize > balance || tradeSize <= 0) return;
     const liqPrice = calcLiqPrice(currentPrice, direction, leverage);
     const trade: OpenTrade = {
-      id: ++tradeIdCounter, direction,
-      entryPrice: currentPrice, size: tradeSize, leverage,
-      timestamp: Date.now(), minute: latestEvent?.minute ?? 0,
-      liquidationPrice: liqPrice,
+      id: ++tradeIdCounter, marketId: activeMarket.id, contract: activeMarket.contract,
+      direction, entryPrice: currentPrice, size: tradeSize, leverage,
+      timestamp: Date.now(), minute: latestEvent?.minute ?? 0, liquidationPrice: liqPrice,
     };
     setBalance(b => Math.round((b - tradeSize) * 100) / 100);
     setOpenTrades(t => [trade, ...t]);
   };
 
   const closeTrade = (trade: OpenTrade) => {
-    const priceDiff = currentPrice - trade.entryPrice;
-    const direction = trade.direction === 'long' ? 1 : -1;
-    // PnL = (priceChange / entryPrice) * margin * leverage
-    const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * direction) * 100) / 100;
+    const mPrice = prices[trade.marketId] ?? trade.entryPrice;
+    const priceDiff = mPrice - trade.entryPrice;
+    const dir = trade.direction === 'long' ? 1 : -1;
+    const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
     const returnAmount = trade.size + pnl;
-
     setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
     setOpenTrades(t => t.filter(tr => tr.id !== trade.id));
     setClosedTrades(c => [{
-      id: trade.id, direction: trade.direction,
-      entryPrice: trade.entryPrice, exitPrice: currentPrice,
-      size: trade.size, leverage: trade.leverage, pnl,
-      reason: 'manual' as const,
-    }, ...c].slice(0, 20));
+      id: trade.id, contract: trade.contract, direction: trade.direction,
+      entryPrice: trade.entryPrice, exitPrice: mPrice,
+      size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
+    }, ...c].slice(0, 50));
   };
 
   const totalUnrealizedPnl = openTrades.reduce((sum, t) => {
-    const diff = currentPrice - t.entryPrice;
+    const mPrice = prices[t.marketId] ?? t.entryPrice;
+    const diff = mPrice - t.entryPrice;
     const dir = t.direction === 'long' ? 1 : -1;
     return sum + ((diff / t.entryPrice) * t.size * t.leverage * dir);
   }, 0);
 
-  const pnlPct = openTrades.length > 0
-    ? (totalUnrealizedPnl / openTrades.reduce((s, t) => s + t.size, 0) * 100)
-    : 0;
+  const totalMargin = openTrades.reduce((s, t) => s + t.size, 0);
+  const pnlPct = totalMargin > 0 ? (totalUnrealizedPnl / totalMargin * 100) : 0;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Trade {contract}</h3>
+        <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Trade {activeMarket.contract}</h3>
         <span className="font-mono text-sm font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
       </div>
 
@@ -137,13 +136,12 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
             <span className={`ml-1 text-[9px] ${
               getEventSentiment(latestEvent.type) === 'positive' ? 'text-accent' : getEventSentiment(latestEvent.type) === 'negative' ? 'text-destructive' : 'text-muted-foreground'
             }`}>
-              ({latestEvent.team === 'home' ? homeTeam : awayTeam} • {getEventSentiment(latestEvent.type)})
+              ({latestEvent.team === 'home' ? activeMarket.homeTeam : activeMarket.awayTeam} • {getEventSentiment(latestEvent.type)})
             </span>
           </p>
         </div>
       )}
 
-      {/* Trade size */}
       <div className="mb-2">
         <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Position Size (Margin)</label>
         <input
@@ -157,7 +155,6 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
         </div>
       </div>
 
-      {/* Leverage */}
       <div className="mb-3">
         <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Leverage</label>
         <div className="flex gap-1">
@@ -176,12 +173,11 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
           ))}
         </div>
         <div className="text-[9px] text-muted-foreground mt-1 font-mono">
-          Liq. price (long): ${calcLiqPrice(currentPrice, 'long', leverage).toFixed(2)} • 
-          (short): ${calcLiqPrice(currentPrice, 'short', leverage).toFixed(2)}
+          Liq. (long): ${calcLiqPrice(currentPrice, 'long', leverage).toFixed(4)} •
+          (short): ${calcLiqPrice(currentPrice, 'short', leverage).toFixed(4)}
         </div>
       </div>
 
-      {/* Long / Short */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <button
           onClick={() => openTrade('long')}
@@ -203,35 +199,36 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
         </button>
       </div>
 
-      {/* Open positions */}
+      {/* All open positions across all markets */}
       {openTrades.length > 0 && (
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Open Positions</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">All Positions ({openTrades.length})</span>
             <span className={`font-mono text-[10px] font-bold ${totalUnrealizedPnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
               uPnL: {totalUnrealizedPnl >= 0 ? '+' : ''}{totalUnrealizedPnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%)
             </span>
           </div>
-          <div className="space-y-1 max-h-[140px] overflow-y-auto custom-scrollbar">
+          <div className="space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
             {openTrades.map(t => {
-              const diff = currentPrice - t.entryPrice;
+              const mPrice = prices[t.marketId] ?? t.entryPrice;
+              const diff = mPrice - t.entryPrice;
               const dir = t.direction === 'long' ? 1 : -1;
               const pnl = (diff / t.entryPrice) * t.size * t.leverage * dir;
               const pnlPctTrade = (pnl / t.size) * 100;
               const isNearLiq = t.direction === 'long'
-                ? currentPrice < t.entryPrice * (1 - 0.7 / t.leverage)
-                : currentPrice > t.entryPrice * (1 + 0.7 / t.leverage);
+                ? mPrice < t.entryPrice * (1 - 0.7 / t.leverage)
+                : mPrice > t.entryPrice * (1 + 0.7 / t.leverage);
               return (
                 <div key={t.id} className={`flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5 text-[10px] ${
                   isNearLiq ? 'border border-[hsl(var(--impact-high)/0.5)] animate-impact-pulse' : ''
                 }`}>
                   <div>
-                    <span className={`font-semibold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
+                    <span className="text-gold font-mono text-[8px]">{t.contract.split('/')[0]}</span>
+                    <span className={`ml-1 font-semibold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
                       {t.direction.toUpperCase()}
                     </span>
                     <span className="text-muted-foreground ml-1">{t.leverage}x</span>
-                    <span className="text-muted-foreground ml-1 font-mono">${t.entryPrice.toFixed(2)}</span>
-                    <span className="text-[8px] text-muted-foreground/60 ml-1">liq: ${t.liquidationPrice.toFixed(2)}</span>
+                    <span className="text-muted-foreground ml-1 font-mono">${t.entryPrice.toFixed(4)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-right">
@@ -256,17 +253,17 @@ export default function TradePanel({ currentPrice, latestEvent, contract, homeTe
         </div>
       )}
 
-      {/* Trade history */}
       {closedTrades.length > 0 && (
         <div>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-1">History</span>
           <div className="space-y-0.5 max-h-[80px] overflow-y-auto custom-scrollbar">
-            {closedTrades.map(t => (
+            {closedTrades.slice(0, 20).map(t => (
               <div key={t.id} className="flex justify-between text-[9px] text-muted-foreground font-mono">
                 <span>
+                  <span className="text-gold">{t.contract.split('/')[0]}</span>{' '}
                   <span className={t.direction === 'long' ? 'text-accent' : 'text-destructive'}>{t.direction}</span>
-                  {' '}{t.leverage}x ${t.entryPrice.toFixed(2)}→${t.exitPrice.toFixed(2)}
-                  {t.reason === 'liquidated' && <span className="text-impact-high ml-1">LIQUIDATED</span>}
+                  {' '}{t.leverage}x
+                  {t.reason === 'liquidated' && <span className="text-impact-high ml-1">LIQ</span>}
                 </span>
                 <span className={`font-bold ${t.pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
                   {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}

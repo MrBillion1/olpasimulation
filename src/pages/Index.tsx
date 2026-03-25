@@ -9,12 +9,13 @@ import MatchHeader from '@/components/MatchHeader';
 import AnimatedPitch from '@/components/AnimatedPitch';
 import ControlsPanel from '@/components/ControlsPanel';
 import EventFeed from '@/components/EventFeed';
-import TradePanel from '@/components/TradePanel';
+import TradePanel, { OpenTrade, ClosedTrade } from '@/components/TradePanel';
 import StatsPanel from '@/components/StatsPanel';
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
 import OrderBook from '@/components/OrderBook';
 import MarketSelector from '@/components/MarketSelector';
+import LiveScoreboard from '@/components/LiveScoreboard';
 
 interface PricePoint {
   minute: number;
@@ -48,13 +49,18 @@ export default function Index() {
     return r;
   });
 
+  // Shared trading state
+  const [balance, setBalance] = useState(10000);
+  const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
+  const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
+
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const eventTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
 
-  // Clock tick for all running markets — 2 min match = 1.33s per minute
+  // Clock tick — 2 min match = 1.33s per minute
   useEffect(() => {
     clockRef.current = setInterval(() => {
       setRuntimes(prev => {
@@ -63,38 +69,26 @@ export default function Index() {
         MARKETS.forEach(m => {
           const rt = next[m.id];
           if (!rt.state.isRunning) return;
-
-          // Handle VAR countdown
           if (rt.state.varActive) {
             if (rt.state.varMinutesLeft <= 1) {
-              next[m.id] = {
-                ...rt,
-                state: { ...rt.state, varActive: false, varMinutesLeft: 0 },
-              };
+              next[m.id] = { ...rt, state: { ...rt.state, varActive: false, varMinutesLeft: 0 } };
             } else {
-              next[m.id] = {
-                ...rt,
-                state: { ...rt.state, varMinutesLeft: rt.state.varMinutesLeft - 1 },
-              };
+              next[m.id] = { ...rt, state: { ...rt.state, varMinutesLeft: rt.state.varMinutesLeft - 1 } };
             }
             changed = true;
-            return; // Don't advance minute during VAR
+            return;
           }
-
           const nextMin = rt.state.minute + 1;
           if (nextMin > 90) {
             next[m.id] = { ...rt, state: { ...rt.state, isRunning: false } };
           } else {
-            next[m.id] = {
-              ...rt,
-              state: { ...rt.state, minute: nextMin, half: nextMin > 45 ? 2 : 1 },
-            };
+            next[m.id] = { ...rt, state: { ...rt.state, minute: nextMin, half: nextMin > 45 ? 2 : 1 } };
           }
           changed = true;
         });
         return changed ? next : prev;
       });
-    }, 1333); // 90 min / 2 min = 1.33s per game minute
+    }, 1333);
     return () => { if (clockRef.current) clearInterval(clockRef.current); };
   }, []);
 
@@ -102,10 +96,7 @@ export default function Index() {
     setRuntimes(prev => {
       const rt = prev[marketId];
       const market = MARKETS.find(m => m.id === marketId)!;
-      if (!rt) return prev;
-
-      // Don't fire events during VAR
-      if (rt.state.varActive) return prev;
+      if (!rt || rt.state.varActive) return prev;
 
       const eventType = type ?? pickRandomEvent(market.scenario, rt.state.minute);
       const eventZone = zone ?? (rt.state.isRunning ? pickRandomZone() : rt.state.selectedZone);
@@ -134,17 +125,15 @@ export default function Index() {
         if (team === 'home') homeScore++; else awayScore++;
       }
 
-      // Check for random VAR trigger (about 3% chance on high-impact events)
       let varActive = false;
       let varMinutesLeft = 0;
-      if (meta.impact === 'high' && Math.random() < 0.15) {
+      if (meta.impact === 'high' && Math.random() < 0.12) {
         varActive = true;
-        varMinutesLeft = 2 + Math.floor(Math.random() * 3); // 2-4 game minutes
+        varMinutesLeft = 2 + Math.floor(Math.random() * 3);
       }
 
-      // Price movement
       const sentiment = getEventSentiment(eventType);
-      const impactMultiplier = meta.impact === 'high' ? 3 : meta.impact === 'medium' ? 1.5 : 0.5;
+      const impactMultiplier = meta.impact === 'high' ? 0.08 : meta.impact === 'medium' ? 0.03 : 0.008;
       const priceMove = weight.final * impactMultiplier * (0.5 + Math.random() * 0.5);
 
       let direction = 0;
@@ -156,10 +145,9 @@ export default function Index() {
         direction = Math.random() > 0.5 ? 0.3 : -0.3;
       }
 
-      const newPrice = Math.max(10, Math.round((rt.currentPrice + priceMove * direction) * 100) / 100);
+      const newPrice = Math.max(0.10, Math.round((rt.currentPrice + priceMove * direction) * 10000) / 10000);
       const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType }];
 
-      // If VAR triggered, add a VAR event right after
       const events = [...rt.state.events, ev];
       if (varActive) {
         const varEv: MatchEvent = {
@@ -190,12 +178,12 @@ export default function Index() {
     });
   }, []);
 
-  // Auto-play for all running markets — 1.25x faster events
+  // Auto-play for all running markets — 1.4x faster
   useEffect(() => {
     MARKETS.forEach(m => {
       const rt = runtimes[m.id];
       if (rt.state.isRunning && !rt.state.varActive) {
-        const delay = 1200 + Math.random() * 2000; // ~1.2-3.2s
+        const delay = 800 + Math.random() * 1400; // ~0.8-2.2s (1.4x faster)
         eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
       }
     });
@@ -220,10 +208,14 @@ export default function Index() {
     }));
   };
 
+  // Start ALL contracts at once
   const startAll = () => {
     setRuntimes(prev => {
       const next = { ...prev };
       MARKETS.forEach(m => {
+        if (next[m.id].state.minute >= 90) {
+          next[m.id] = createRuntime(m);
+        }
         next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
       });
       return next;
@@ -247,17 +239,20 @@ export default function Index() {
 
   const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
 
-  // Collect prices for market selector
   const prices: Record<string, number> = {};
   const priceChanges: Record<string, number> = {};
   const matchMinutes: Record<string, number> = {};
   const isRunningMap: Record<string, boolean> = {};
+  const latestEvents: Record<string, MatchEvent | undefined> = {};
+  const allEvents: Record<string, MatchEvent[]> = {};
   MARKETS.forEach(m => {
     const rt = runtimes[m.id];
     prices[m.id] = rt.currentPrice;
     priceChanges[m.id] = rt.currentPrice - m.startPrice;
     matchMinutes[m.id] = rt.state.minute;
     isRunningMap[m.id] = rt.state.isRunning;
+    latestEvents[m.id] = rt.state.events[rt.state.events.length - 1];
+    allEvents[m.id] = rt.state.events;
   });
 
   return (
@@ -269,7 +264,6 @@ export default function Index() {
       </div>
 
       <div className="flex-1 p-3 max-w-[1600px] mx-auto w-full">
-        {/* Market selector cards */}
         <div className="mb-3 flex items-center gap-3">
           <MarketSelector
             markets={MARKETS}
@@ -285,11 +279,10 @@ export default function Index() {
             className="shrink-0 bg-gold text-primary-foreground font-semibold text-[10px] px-3 py-2 rounded-md
                        hover:brightness-110 active:scale-[0.97] transition-all uppercase tracking-wider"
           >
-            ▶ Start All
+            ▶ AUTO
           </button>
         </div>
 
-        {/* VAR Banner */}
         {activeRuntime.state.varActive && (
           <div className="bg-[hsl(var(--impact-high)/0.12)] border border-[hsl(var(--impact-high)/0.4)] rounded-lg p-3 mb-3 animate-impact-pulse">
             <div className="flex items-center justify-center gap-3">
@@ -297,7 +290,7 @@ export default function Index() {
               <div className="text-center">
                 <p className="text-sm font-bold text-impact-high">VAR REVIEW — PENDA MODE ACTIVE</p>
                 <p className="text-[10px] text-muted-foreground">
-                  Match halted • Market frozen • Adaptive weight recalibration in progress • 
+                  Match halted • Market frozen • Adaptive weight recalibration in progress •
                   <span className="text-gold font-mono font-bold ml-1">{activeRuntime.state.varMinutesLeft} min remaining</span>
                 </p>
               </div>
@@ -341,16 +334,27 @@ export default function Index() {
                 priceHistory={activeRuntime.priceHistory}
                 currentPrice={activeRuntime.currentPrice}
                 startPrice={activeMarket.startPrice}
+                contract={activeMarket.contract}
+                homeTeam={activeMarket.homeTeam}
+                awayTeam={activeMarket.awayTeam}
+                homeColor={activeMarket.homeColor}
+                awayColor={activeMarket.awayColor}
               />
             </div>
 
-            <Commentary
-              events={activeRuntime.state.events}
-              homeTeam={activeMarket.homeTeam}
-              awayTeam={activeMarket.awayTeam}
-              homePlayers={activeMarket.homePlayers}
-              awayPlayers={activeMarket.awayPlayers}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Commentary
+                allEvents={allEvents}
+                markets={MARKETS}
+                activeMarketId={activeMarketId}
+              />
+              <LiveScoreboard
+                markets={MARKETS}
+                runtimes={runtimes}
+                activeMarketId={activeMarketId}
+                onSelectMarket={setActiveMarketId}
+              />
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <ControlsPanel
@@ -399,11 +403,15 @@ export default function Index() {
 
           <div className="space-y-3">
             <TradePanel
-              currentPrice={activeRuntime.currentPrice}
-              latestEvent={latestEvent}
-              contract={activeMarket.contract}
-              homeTeam={activeMarket.homeTeam}
-              awayTeam={activeMarket.awayTeam}
+              activeMarket={activeMarket}
+              prices={prices}
+              latestEvents={latestEvents}
+              balance={balance}
+              setBalance={setBalance}
+              openTrades={openTrades}
+              setOpenTrades={setOpenTrades}
+              closedTrades={closedTrades}
+              setClosedTrades={setClosedTrades}
             />
             <OrderBook
               currentPrice={activeRuntime.currentPrice}
