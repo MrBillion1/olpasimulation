@@ -264,7 +264,7 @@ export default function Index() {
       </div>
 
       <div className="flex-1 p-3 max-w-[1600px] mx-auto w-full">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3">
           <MarketSelector
             markets={MARKETS}
             activeMarketId={activeMarketId}
@@ -273,14 +273,8 @@ export default function Index() {
             priceChanges={priceChanges}
             matchMinutes={matchMinutes}
             isRunning={isRunningMap}
+            onStartAll={startAll}
           />
-          <button
-            onClick={startAll}
-            className="shrink-0 bg-gold text-primary-foreground font-semibold text-[10px] px-3 py-2 rounded-md
-                       hover:brightness-110 active:scale-[0.97] transition-all uppercase tracking-wider"
-          >
-            ▶ AUTO
-          </button>
         </div>
 
         {activeRuntime.state.varActive && (
