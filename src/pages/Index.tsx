@@ -60,7 +60,7 @@ export default function Index() {
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
 
-  // Clock tick — 2 min match = 1.33s per minute
+  // Clock tick — 2min30s match = 1.667s per minute (150s / 90)
   useEffect(() => {
     clockRef.current = setInterval(() => {
       setRuntimes(prev => {
