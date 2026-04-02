@@ -60,7 +60,7 @@ export default function Index() {
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
 
-  // Clock tick — 2 min match = 1.33s per minute
+  // Clock tick — 2min30s match = 1.667s per minute (150s / 90)
   useEffect(() => {
     clockRef.current = setInterval(() => {
       setRuntimes(prev => {
@@ -88,7 +88,7 @@ export default function Index() {
         });
         return changed ? next : prev;
       });
-    }, 1333);
+    }, 1667);
     return () => { if (clockRef.current) clearInterval(clockRef.current); };
   }, []);
 
@@ -183,7 +183,7 @@ export default function Index() {
     MARKETS.forEach(m => {
       const rt = runtimes[m.id];
       if (rt.state.isRunning && !rt.state.varActive) {
-        const delay = 800 + Math.random() * 1400; // ~0.8-2.2s (1.4x faster)
+        const delay = 600 + Math.random() * 1000; // ~0.6-1.6s (2x speed)
         eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
       }
     });
@@ -264,7 +264,7 @@ export default function Index() {
       </div>
 
       <div className="flex-1 p-3 max-w-[1600px] mx-auto w-full">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3">
           <MarketSelector
             markets={MARKETS}
             activeMarketId={activeMarketId}
@@ -273,14 +273,8 @@ export default function Index() {
             priceChanges={priceChanges}
             matchMinutes={matchMinutes}
             isRunning={isRunningMap}
+            onStartAll={startAll}
           />
-          <button
-            onClick={startAll}
-            className="shrink-0 bg-gold text-primary-foreground font-semibold text-[10px] px-3 py-2 rounded-md
-                       hover:brightness-110 active:scale-[0.97] transition-all uppercase tracking-wider"
-          >
-            ▶ AUTO
-          </button>
         </div>
 
         {activeRuntime.state.varActive && (
