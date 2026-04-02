@@ -266,18 +266,32 @@ export function getZoneModifier(zone: ZoneId, eventType: EventType): number {
 
 export function getTimeModifier(minute: number, eventType: EventType): number {
   const meta = EVENT_META[eventType];
-  if (minute <= 15) {
-    return meta.impact === 'high' ? -0.05 : -0.08;
-  } else if (minute >= 85) {
-    return meta.impact === 'high' ? 0.25 : 0.10;
-  } else if (minute >= 75) {
-    if (meta.impact === 'high') return 0.15;
-    if (meta.impact === 'medium') return 0.05;
-    return -0.05;
-  } else if (minute >= 40 && minute <= 48) {
-    return 0.08;
+  const impactScale = meta.impact === 'high' ? 1.4 : meta.impact === 'medium' ? 1.0 : 0.6;
+
+  // 1st half: progressive increase
+  if (minute <= 10) {
+    return -0.08 * impactScale; // Very early — minimal movement
+  } else if (minute <= 20) {
+    return -0.04 * impactScale; // Early 1st half — still subdued
+  } else if (minute <= 30) {
+    return 0.02 * impactScale; // Mid 1st half — slightly increased
+  } else if (minute <= 40) {
+    return 0.06 * impactScale; // Late-mid 1st half — building
+  } else if (minute <= 48) {
+    return 0.12 * impactScale; // End of 1st half / HT — heightened
+
+  // 2nd half: amplified progressive increase
+  } else if (minute <= 55) {
+    return 0.05 * impactScale; // Early 2nd half — reset but higher baseline
+  } else if (minute <= 65) {
+    return 0.10 * impactScale; // Mid 2nd half — pressure building
+  } else if (minute <= 75) {
+    return 0.16 * impactScale; // Late-mid 2nd half — high stakes
+  } else if (minute <= 85) {
+    return 0.22 * impactScale; // Late 2nd half — every event matters more
+  } else {
+    return 0.30 * impactScale; // Final minutes / injury time — maximum impact
   }
-  return 0;
 }
 
 export function calculateWeight(
