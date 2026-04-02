@@ -341,6 +341,7 @@ export default function Index() {
                 allEvents={allEvents}
                 markets={MARKETS}
                 activeMarketId={activeMarketId}
+                matchStates={Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]))}
               />
               <LiveScoreboard
                 markets={MARKETS}
