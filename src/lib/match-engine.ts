@@ -247,15 +247,15 @@ const ZONE_MODIFIERS: Record<string, Partial<Record<EventType, number>>> = {
 
 const SIGNIFICANCE_MODIFIERS: Record<SignificanceType, number> = {
   'No shift': 0.00,
-  'Build-up play': 0.08,
-  'Creates counter-attack': 0.25,
-  'Momentum swing to home': 0.15,
-  'Momentum swing to away': 0.15,
-  'High goal-scoring chance': 0.40,
-  'Breaks defensive line': 0.22,
-  'Kills attack': -0.12,
-  'Game-changing moment': 0.35,
-  'Tactical adjustment': 0.05,
+  'Build-up play': 0.10,
+  'Creates counter-attack': 0.28,
+  'Momentum swing to home': 0.20,
+  'Momentum swing to away': 0.20,
+  'High goal-scoring chance': 0.45,
+  'Breaks defensive line': 0.30,
+  'Kills attack': -0.15,
+  'Game-changing moment': 0.42,
+  'Tactical adjustment': 0.08,
   'VAR halt — Penda mode active': 0.00,
 };
 
