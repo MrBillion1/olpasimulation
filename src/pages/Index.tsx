@@ -183,7 +183,7 @@ export default function Index() {
     MARKETS.forEach(m => {
       const rt = runtimes[m.id];
       if (rt.state.isRunning && !rt.state.varActive) {
-        const delay = 800 + Math.random() * 1400; // ~0.8-2.2s (1.4x faster)
+        const delay = 600 + Math.random() * 1000; // ~0.6-1.6s (2x speed)
         eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
       }
     });

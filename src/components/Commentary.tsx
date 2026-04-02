@@ -1,4 +1,4 @@
-import { MatchEvent, MarketConfig, MARKETS } from '@/lib/match-engine';
+import { MatchEvent, MarketConfig } from '@/lib/match-engine';
 import { useEffect, useRef, useState } from 'react';
 
 interface CommentaryProps {
@@ -61,35 +61,28 @@ interface CommentaryItem {
 
 export default function Commentary({ allEvents, markets, activeMarketId }: CommentaryProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [filter, setFilter] = useState<'all' | 'active'>('all');
+  const [selectedMarketId, setSelectedMarketId] = useState<string>(activeMarketId);
 
-  // Build unified commentary feed from all markets
-  const allCommentary: CommentaryItem[] = [];
-  markets.forEach(m => {
-    const events = allEvents[m.id] ?? [];
+  // Build commentary for the selected market only
+  const selectedMarket = markets.find(m => m.id === selectedMarketId);
+  const commentary: CommentaryItem[] = [];
+  if (selectedMarket) {
+    const events = allEvents[selectedMarketId] ?? [];
     events.forEach(ev => {
-      allCommentary.push({
-        marketId: m.id,
+      commentary.push({
+        marketId: selectedMarketId,
         event: ev,
-        text: generateCommentary(ev, m.homeTeam, m.awayTeam, m.homePlayers, m.awayPlayers),
-        marketLabel: m.contract.split('/')[0],
+        text: generateCommentary(ev, selectedMarket.homeTeam, selectedMarket.awayTeam, selectedMarket.homePlayers, selectedMarket.awayPlayers),
+        marketLabel: selectedMarket.contract.split('/')[0],
       });
     });
-  });
+  }
 
-  const filtered = filter === 'active'
-    ? allCommentary.filter(c => c.marketId === activeMarketId)
-    : allCommentary;
-
-  const sorted = [...filtered].sort((a, b) => {
-    const aIdx = (allEvents[a.marketId] ?? []).indexOf(a.event);
-    const bIdx = (allEvents[b.marketId] ?? []).indexOf(b.event);
-    return bIdx - aIdx || b.event.minute - a.event.minute;
-  }).slice(0, 25);
+  const sorted = [...commentary].reverse().slice(0, 30);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [allCommentary.length]);
+  }, [commentary.length]);
 
   return (
     <div className="bg-card border border-border rounded-lg p-3">
@@ -97,33 +90,39 @@ export default function Commentary({ allEvents, markets, activeMarketId }: Comme
         <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">
           📺 Live Commentary
         </h3>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setFilter('all')}
-            className={`text-[9px] px-2 py-0.5 rounded font-semibold transition-all ${
-              filter === 'all' ? 'bg-gold text-primary-foreground' : 'bg-secondary text-muted-foreground'
-            }`}
-          >All Matches</button>
-          <button
-            onClick={() => setFilter('active')}
-            className={`text-[9px] px-2 py-0.5 rounded font-semibold transition-all ${
-              filter === 'active' ? 'bg-gold text-primary-foreground' : 'bg-secondary text-muted-foreground'
-            }`}
-          >Active Only</button>
-        </div>
       </div>
+
+      {/* Contract tabs */}
+      <div className="flex gap-1 flex-wrap mb-2">
+        {markets.map(m => {
+          const isActive = m.id === selectedMarketId;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setSelectedMarketId(m.id)}
+              className={`text-[8px] px-2 py-1 rounded font-mono font-bold transition-all ${
+                isActive
+                  ? 'bg-gold text-primary-foreground'
+                  : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+              }`}
+            >
+              {m.contract.split('/')[0]}
+            </button>
+          );
+        })}
+      </div>
+
       <div ref={scrollRef} className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-1.5">
         {sorted.length === 0 && (
           <p className="text-muted-foreground/50 text-[11px] text-center py-4">Awaiting kick-off…</p>
         )}
         {sorted.map((item, i) => (
           <div
-            key={`${item.marketId}-${item.event.id}`}
+            key={item.event.id}
             className={`flex gap-2 text-[11px] leading-relaxed ${i === 0 ? 'animate-event-flash' : ''}`}
           >
-            <span className="font-mono text-[8px] text-gold/60 shrink-0 w-12 text-right">
-              <span className="text-gold font-bold">{item.marketLabel}</span>
-              <br />{String(item.event.minute).padStart(2, '0')}′
+            <span className="font-mono text-[9px] text-gold/70 shrink-0 w-6 text-right">
+              {String(item.event.minute).padStart(2, '0')}′
             </span>
             <span className={`${
               item.event.type === 'VAR Review' ? 'text-impact-high font-bold' :

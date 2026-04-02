@@ -1,4 +1,5 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Dot } from 'recharts';
+import { EVENT_META, EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
   priceHistory: { minute: number; price: number; event?: string }[];
@@ -9,6 +10,39 @@ interface PriceChartProps {
   awayTeam: string;
   homeColor: string;
   awayColor: string;
+}
+
+// Custom dot that renders event annotations on the chart
+function EventDot(props: any) {
+  const { cx, cy, payload } = props;
+  if (!payload?.event || !cx || !cy) return null;
+
+  const meta = EVENT_META[payload.event as EventType];
+  if (!meta) return null;
+
+  // Only annotate medium and high impact events
+  if (meta.impact === 'low') return null;
+
+  const color =
+    meta.impact === 'high' ? 'hsl(0, 68%, 50%)' :
+    'hsl(38, 78%, 52%)';
+
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={meta.impact === 'high' ? 5 : 3.5} fill={color} fillOpacity={0.85} stroke="hsl(24, 12%, 12%)" strokeWidth={1.5} />
+      <text
+        x={cx}
+        y={cy - (meta.impact === 'high' ? 10 : 8)}
+        textAnchor="middle"
+        fill={color}
+        fontSize={meta.impact === 'high' ? 8 : 7}
+        fontWeight="bold"
+        fontFamily="monospace"
+      >
+        {meta.emoji} {payload.event}
+      </text>
+    </g>
+  );
 }
 
 export default function PriceChart({ priceHistory, currentPrice, startPrice, contract, homeTeam, awayTeam, homeColor, awayColor }: PriceChartProps) {
@@ -41,9 +75,9 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
         </span>
       </div>
 
-      <div className="h-[140px] -mx-2">
+      <div className="h-[160px] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={priceHistory} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+          <AreaChart data={priceHistory} margin={{ top: 18, right: 5, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={chartColor} stopOpacity={0.3} />
@@ -73,7 +107,11 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 fontSize: '11px',
               }}
               labelFormatter={v => `${v}'`}
-              formatter={(value: number) => [`$${value.toFixed(4)}`, 'Price']}
+              formatter={(value: number, name: string, props: any) => {
+                const ev = props?.payload?.event;
+                const label = ev ? `Price (${ev})` : 'Price';
+                return [`$${value.toFixed(4)}`, label];
+              }}
             />
             <ReferenceLine y={startPrice} stroke="hsl(38, 78%, 52%)" strokeDasharray="3 3" strokeOpacity={0.3} />
             <Area
@@ -82,7 +120,8 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
               stroke={chartColor}
               strokeWidth={2}
               fill={`url(#${gradientId})`}
-              dot={false}
+              dot={<EventDot />}
+              activeDot={{ r: 4, stroke: chartColor, strokeWidth: 2 }}
               animationDuration={300}
             />
           </AreaChart>
