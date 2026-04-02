@@ -88,7 +88,7 @@ export default function Index() {
         });
         return changed ? next : prev;
       });
-    }, 1333);
+    }, 1667);
     return () => { if (clockRef.current) clearInterval(clockRef.current); };
   }, []);
 
