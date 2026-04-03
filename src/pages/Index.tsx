@@ -407,6 +407,7 @@ export default function Index() {
               setOpenTrades={setOpenTrades}
               closedTrades={closedTrades}
               setClosedTrades={setClosedTrades}
+              matchStates={Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]))}
             />
             <OrderBook
               currentPrice={activeRuntime.currentPrice}
