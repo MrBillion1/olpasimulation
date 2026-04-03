@@ -12,6 +12,8 @@ export interface OpenTrade {
   timestamp: number;
   minute: number;
   liquidationPrice: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
 }
 
 export interface ClosedTrade {
@@ -23,7 +25,7 @@ export interface ClosedTrade {
   size: number;
   leverage: number;
   pnl: number;
-  reason: 'manual' | 'liquidated' | 'expired' | 'counter-closed';
+  reason: 'manual' | 'liquidated' | 'expired' | 'counter-closed' | 'stop-loss' | 'take-profit';
 }
 
 interface TradePanelProps {
@@ -47,6 +49,10 @@ export default function TradePanel({
 }: TradePanelProps) {
   const [tradeSize, setTradeSize] = useState(100);
   const [leverage, setLeverage] = useState(5);
+  const [slEnabled, setSlEnabled] = useState(false);
+  const [tpEnabled, setTpEnabled] = useState(false);
+  const [slPct, setSlPct] = useState(5); // SL as % from entry
+  const [tpPct, setTpPct] = useState(10); // TP as % from entry
 
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
@@ -56,9 +62,21 @@ export default function TradePanel({
     return Math.round(entry * (1 + 1 / lev) * 10000) / 10000;
   };
 
-  // Close a single trade and return margin + pnl to balance
-  const closeTrade = (trade: OpenTrade, reason: 'manual' | 'liquidated' | 'expired' | 'counter-closed' = 'manual') => {
-    const mPrice = prices[trade.marketId] ?? trade.entryPrice;
+  const calcSlTp = (entry: number, dir: 'long' | 'short') => {
+    const slPrice = dir === 'long'
+      ? entry * (1 - slPct / 100)
+      : entry * (1 + slPct / 100);
+    const tpPrice = dir === 'long'
+      ? entry * (1 + tpPct / 100)
+      : entry * (1 - tpPct / 100);
+    return {
+      sl: slEnabled ? Math.round(slPrice * 10000) / 10000 : null,
+      tp: tpEnabled ? Math.round(tpPrice * 10000) / 10000 : null,
+    };
+  };
+
+  const closeTrade = (trade: OpenTrade, reason: ClosedTrade['reason'] = 'manual', overridePrice?: number) => {
+    const mPrice = overridePrice ?? prices[trade.marketId] ?? trade.entryPrice;
     const priceDiff = mPrice - trade.entryPrice;
     const dir = trade.direction === 'long' ? 1 : -1;
     const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
@@ -74,7 +92,7 @@ export default function TradePanel({
     }, ...c].slice(0, 50));
   };
 
-  // Auto-liquidation across ALL markets
+  // Auto-liquidation + SL/TP check across ALL markets
   useEffect(() => {
     setOpenTrades(prev => {
       const stillOpen: OpenTrade[] = [];
@@ -84,12 +102,47 @@ export default function TradePanel({
         const isLiquidated = t.direction === 'long'
           ? mPrice <= t.liquidationPrice
           : mPrice >= t.liquidationPrice;
+
+        // SL check
+        const slHit = t.stopLoss !== null && (
+          t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss
+        );
+        // TP check
+        const tpHit = t.takeProfit !== null && (
+          t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit
+        );
+
         if (isLiquidated) {
           newClosed.push({
             id: t.id, contract: t.contract, direction: t.direction,
             entryPrice: t.entryPrice, exitPrice: mPrice,
             size: t.size, leverage: t.leverage, pnl: -t.size, reason: 'liquidated',
           });
+        } else if (slHit) {
+          const exitP = t.stopLoss!;
+          const diff = exitP - t.entryPrice;
+          const dir = t.direction === 'long' ? 1 : -1;
+          const pnl = Math.round(((diff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
+          newClosed.push({
+            id: t.id, contract: t.contract, direction: t.direction,
+            entryPrice: t.entryPrice, exitPrice: exitP,
+            size: t.size, leverage: t.leverage, pnl, reason: 'stop-loss',
+          });
+          // Return margin + pnl
+          const ret = t.size + pnl;
+          setBalance(b => Math.round((b + Math.max(0, ret)) * 100) / 100);
+        } else if (tpHit) {
+          const exitP = t.takeProfit!;
+          const diff = exitP - t.entryPrice;
+          const dir = t.direction === 'long' ? 1 : -1;
+          const pnl = Math.round(((diff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
+          newClosed.push({
+            id: t.id, contract: t.contract, direction: t.direction,
+            entryPrice: t.entryPrice, exitPrice: exitP,
+            size: t.size, leverage: t.leverage, pnl, reason: 'take-profit',
+          });
+          const ret = t.size + pnl;
+          setBalance(b => Math.round((b + Math.max(0, ret)) * 100) / 100);
         } else {
           stillOpen.push(t);
         }
@@ -99,14 +152,13 @@ export default function TradePanel({
       }
       return stillOpen;
     });
-  }, [prices, setOpenTrades, setClosedTrades]);
+  }, [prices, setOpenTrades, setClosedTrades, setBalance]);
 
   // CONTRACT EXPIRY: Force-close all trades on markets that reach full-time
   useEffect(() => {
     if (!matchStates) return;
     Object.entries(matchStates).forEach(([marketId, ms]) => {
       if (ms.minute >= 90 && !ms.isRunning) {
-        // Find all open trades for this expired market
         const expiredTrades = openTrades.filter(t => t.marketId === marketId);
         expiredTrades.forEach(t => {
           const mPrice = prices[t.marketId] ?? t.entryPrice;
@@ -132,19 +184,20 @@ export default function TradePanel({
     if (tradeSize > balance || tradeSize <= 0) return;
 
     const ms = matchStates?.[activeMarket.id];
-    if (ms && ms.minute >= 90 && !ms.isRunning) return; // Can't trade expired contract
+    if (ms && ms.minute >= 90 && !ms.isRunning) return;
 
     // COUNTER TRADE: Close existing opposite position on same contract first
     const existingOnMarket = openTrades.filter(t => t.marketId === activeMarket.id);
     const opposites = existingOnMarket.filter(t => t.direction !== direction);
     opposites.forEach(t => closeTrade(t, 'counter-closed'));
 
-    // If same direction exists, just add new position
     const liqPrice = calcLiqPrice(currentPrice, direction, leverage);
+    const { sl, tp } = calcSlTp(currentPrice, direction);
     const trade: OpenTrade = {
       id: ++tradeIdCounter, marketId: activeMarket.id, contract: activeMarket.contract,
       direction, entryPrice: currentPrice, size: tradeSize, leverage,
       timestamp: Date.now(), minute: latestEvent?.minute ?? 0, liquidationPrice: liqPrice,
+      stopLoss: sl, takeProfit: tp,
     };
     setBalance(b => Math.round((b - tradeSize) * 100) / 100);
     setOpenTrades(t => [trade, ...t]);
@@ -161,6 +214,10 @@ export default function TradePanel({
   const pnlPct = totalMargin > 0 ? (totalUnrealizedPnl / totalMargin * 100) : 0;
 
   const isExpired = matchStates?.[activeMarket.id]?.minute >= 90 && !matchStates?.[activeMarket.id]?.isRunning;
+
+  // Preview SL/TP prices for current settings
+  const previewSl = slEnabled ? (calcSlTp(currentPrice, 'long').sl) : null;
+  const previewTp = tpEnabled ? (calcSlTp(currentPrice, 'long').tp) : null;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
@@ -229,6 +286,63 @@ export default function TradePanel({
             </div>
           </div>
 
+          {/* SL/TP Controls */}
+          <div className="mb-3 space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSlEnabled(!slEnabled)}
+                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded transition-all ${
+                  slEnabled ? 'bg-destructive/20 text-destructive border border-destructive/40' : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                <span className="text-[8px]">🛑</span> SL {slEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                onClick={() => setTpEnabled(!tpEnabled)}
+                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded transition-all ${
+                  tpEnabled ? 'bg-accent/20 text-accent border border-accent/40' : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                <span className="text-[8px]">🎯</span> TP {tpEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {(slEnabled || tpEnabled) && (
+              <div className="bg-secondary/30 rounded p-2 border border-border space-y-1.5">
+                {slEnabled && (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] text-destructive font-semibold uppercase tracking-wider">Stop Loss ({slPct}%)</label>
+                      <span className="text-[9px] font-mono text-muted-foreground">
+                        L: ${(currentPrice * (1 - slPct / 100)).toFixed(4)} • S: ${(currentPrice * (1 + slPct / 100)).toFixed(4)}
+                      </span>
+                    </div>
+                    <input
+                      type="range" min={1} max={50} step={1}
+                      value={slPct} onChange={e => setSlPct(Number(e.target.value))}
+                      className="w-full accent-destructive h-1"
+                    />
+                  </div>
+                )}
+                {tpEnabled && (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] text-accent font-semibold uppercase tracking-wider">Take Profit ({tpPct}%)</label>
+                      <span className="text-[9px] font-mono text-muted-foreground">
+                        L: ${(currentPrice * (1 + tpPct / 100)).toFixed(4)} • S: ${(currentPrice * (1 - tpPct / 100)).toFixed(4)}
+                      </span>
+                    </div>
+                    <input
+                      type="range" min={1} max={100} step={1}
+                      value={tpPct} onChange={e => setTpPct(Number(e.target.value))}
+                      className="w-full accent-[hsl(var(--accent))] h-1"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-2 mb-3">
             <button
               onClick={() => openTrade('long')}
@@ -271,33 +385,50 @@ export default function TradePanel({
                 ? mPrice < t.entryPrice * (1 - 0.7 / t.leverage)
                 : mPrice > t.entryPrice * (1 + 0.7 / t.leverage);
               return (
-                <div key={t.id} className={`flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5 text-[10px] ${
+                <div key={t.id} className={`bg-secondary/40 rounded px-2 py-1.5 text-[10px] ${
                   isNearLiq ? 'border border-[hsl(var(--impact-high)/0.5)] animate-impact-pulse' : ''
                 }`}>
-                  <div>
-                    <span className="text-gold font-mono text-[8px]">{t.contract.split('/')[0]}</span>
-                    <span className={`ml-1 font-semibold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
-                      {t.direction.toUpperCase()}
-                    </span>
-                    <span className="text-muted-foreground ml-1">{t.leverage}x</span>
-                    <span className="text-muted-foreground ml-1 font-mono">${t.entryPrice.toFixed(4)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      <span className={`font-mono font-bold ${pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                        {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-gold font-mono text-[8px]">{t.contract.split('/')[0]}</span>
+                      <span className={`ml-1 font-semibold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
+                        {t.direction.toUpperCase()}
                       </span>
-                      <span className={`text-[8px] ml-1 ${pnl >= 0 ? 'text-accent/70' : 'text-destructive/70'}`}>
-                        ({pnlPctTrade >= 0 ? '+' : ''}{pnlPctTrade.toFixed(0)}%)
-                      </span>
+                      <span className="text-muted-foreground ml-1">{t.leverage}x</span>
+                      <span className="text-muted-foreground ml-1 font-mono">${t.entryPrice.toFixed(4)}</span>
                     </div>
-                    <button
-                      onClick={() => closeTrade(t, 'manual')}
-                      className="text-[9px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors"
-                    >
-                      Close
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <span className={`font-mono font-bold ${pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+                        </span>
+                        <span className={`text-[8px] ml-1 ${pnl >= 0 ? 'text-accent/70' : 'text-destructive/70'}`}>
+                          ({pnlPctTrade >= 0 ? '+' : ''}{pnlPctTrade.toFixed(0)}%)
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => closeTrade(t, 'manual')}
+                        className="text-[9px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
+                  {/* SL/TP indicators */}
+                  {(t.stopLoss !== null || t.takeProfit !== null) && (
+                    <div className="flex gap-3 mt-0.5">
+                      {t.stopLoss !== null && (
+                        <span className="text-[8px] font-mono text-destructive/80">
+                          🛑 SL: ${t.stopLoss.toFixed(4)}
+                        </span>
+                      )}
+                      {t.takeProfit !== null && (
+                        <span className="text-[8px] font-mono text-accent/80">
+                          🎯 TP: ${t.takeProfit.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -318,6 +449,8 @@ export default function TradePanel({
                   {t.reason === 'liquidated' && <span className="text-impact-high ml-1">LIQ</span>}
                   {t.reason === 'expired' && <span className="text-gold ml-1">EXP</span>}
                   {t.reason === 'counter-closed' && <span className="text-muted-foreground ml-1">NET</span>}
+                  {t.reason === 'stop-loss' && <span className="text-destructive ml-1">SL</span>}
+                  {t.reason === 'take-profit' && <span className="text-accent ml-1">TP</span>}
                 </span>
                 <span className={`font-bold ${t.pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
                   {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}
