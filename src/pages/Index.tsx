@@ -21,6 +21,7 @@ interface PricePoint {
   minute: number;
   price: number;
   event?: string;
+  team?: 'home' | 'away';
 }
 
 interface MarketRuntime {
