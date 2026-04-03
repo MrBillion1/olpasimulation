@@ -1,5 +1,5 @@
 import { MatchEvent, MarketConfig } from '@/lib/match-engine';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface CommentaryProps {
   allEvents: Record<string, MatchEvent[]>;
@@ -62,34 +62,29 @@ function generateCommentary(ev: MatchEvent, homeTeam: string, awayTeam: string, 
 }
 
 interface CommentaryItem {
-  marketId: string;
   event: MatchEvent;
   text: string;
-  marketLabel: string;
 }
 
 export default function Commentary({ allEvents, markets, activeMarketId, matchStates }: CommentaryProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [selectedMarketId, setSelectedMarketId] = useState<string>(activeMarketId);
 
-  const selectedMarket = markets.find(m => m.id === selectedMarketId);
-  const matchState = matchStates[selectedMarketId];
+  // Always bound to active contract — no independent selectedMarketId
+  const selectedMarket = markets.find(m => m.id === activeMarketId);
+  const matchState = matchStates[activeMarketId];
 
-  // Determine match status for this contract
   const hasStarted = matchState && matchState.minute > 0;
   const isFinished = matchState && matchState.minute >= 90 && !matchState.isRunning;
   const isLive = matchState && matchState.isRunning;
 
-  // Build commentary only from events (event-driven, not time-driven)
+  // Build commentary only from active contract events
   const commentary: CommentaryItem[] = [];
   if (selectedMarket && hasStarted) {
-    const events = allEvents[selectedMarketId] ?? [];
+    const events = allEvents[activeMarketId] ?? [];
     events.forEach(ev => {
       commentary.push({
-        marketId: selectedMarketId,
         event: ev,
         text: generateCommentary(ev, selectedMarket.homeTeam, selectedMarket.awayTeam, selectedMarket.homePlayers, selectedMarket.awayPlayers),
-        marketLabel: selectedMarket.contract.split('/')[0],
       });
     });
   }
@@ -100,45 +95,28 @@ export default function Commentary({ allEvents, markets, activeMarketId, matchSt
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [commentary.length]);
 
+  // Contract ticker tabs — clicking switches the global active market
+  const contractLabel = selectedMarket?.contract.split('/')[0] ?? '';
+
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">
           📺 Live Commentary
         </h3>
-        {isLive && (
-          <span className="text-[9px] px-2 py-0.5 rounded-full bg-accent/20 text-accent font-bold animate-pulse">
-            ● LIVE
-          </span>
-        )}
-        {isFinished && (
-          <span className="text-[9px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
-            FULL TIME
-          </span>
-        )}
-      </div>
-
-      {/* Contract tabs */}
-      <div className="flex gap-1 flex-wrap mb-2">
-        {markets.map(m => {
-          const mState = matchStates[m.id];
-          const mLive = mState?.isRunning;
-          const isActive = m.id === selectedMarketId;
-          return (
-            <button
-              key={m.id}
-              onClick={() => setSelectedMarketId(m.id)}
-              className={`text-[8px] px-2 py-1 rounded font-mono font-bold transition-all flex items-center gap-1 ${
-                isActive
-                  ? 'bg-gold text-primary-foreground'
-                  : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
-              }`}
-            >
-              {mLive && <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
-              {m.contract.split('/')[0]}
-            </button>
-          );
-        })}
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[9px] text-gold bg-secondary px-1.5 py-0.5 rounded">{contractLabel}</span>
+          {isLive && (
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-accent/20 text-accent font-bold animate-pulse">
+              ● LIVE
+            </span>
+          )}
+          {isFinished && (
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-bold">
+              FULL TIME
+            </span>
+          )}
+        </div>
       </div>
 
       <div ref={scrollRef} className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-1.5">
