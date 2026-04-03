@@ -146,7 +146,7 @@ export default function Index() {
       }
 
       const newPrice = Math.max(0.10, Math.round((rt.currentPrice + priceMove * direction) * 10000) / 10000);
-      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType }];
+      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType, team }];
 
       const events = [...rt.state.events, ev];
       if (varActive) {
