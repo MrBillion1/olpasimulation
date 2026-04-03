@@ -1,8 +1,8 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Dot } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { EVENT_META, EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
-  priceHistory: { minute: number; price: number; event?: string }[];
+  priceHistory: { minute: number; price: number; event?: string; team?: 'home' | 'away' }[];
   currentPrice: number;
   startPrice: number;
   contract: string;
@@ -12,34 +12,38 @@ interface PriceChartProps {
   awayColor: string;
 }
 
-// Custom dot that renders event annotations on the chart
 function EventDot(props: any) {
   const { cx, cy, payload } = props;
   if (!payload?.event || !cx || !cy) return null;
 
   const meta = EVENT_META[payload.event as EventType];
   if (!meta) return null;
-
-  // Only annotate medium and high impact events
   if (meta.impact === 'low') return null;
 
-  const color =
-    meta.impact === 'high' ? 'hsl(0, 68%, 50%)' :
-    'hsl(38, 78%, 52%)';
+  const isHome = payload.team === 'home';
+  const actorColor = isHome ? 'hsl(145, 55%, 42%)' : 'hsl(0, 68%, 50%)';
+  const actorBg = isHome ? 'hsl(145, 55%, 25%)' : 'hsl(0, 68%, 30%)';
+  const actorLabel = isHome ? 'H' : 'A';
+  const r = meta.impact === 'high' ? 5 : 3.5;
 
   return (
     <g>
-      <circle cx={cx} cy={cy} r={meta.impact === 'high' ? 5 : 3.5} fill={color} fillOpacity={0.85} stroke="hsl(24, 12%, 12%)" strokeWidth={1.5} />
+      {/* Actor circle */}
+      <circle cx={cx} cy={cy} r={r} fill={actorBg} fillOpacity={0.9} stroke={actorColor} strokeWidth={1.5} />
+      <text x={cx} y={cy + 3} textAnchor="middle" fill="white" fontSize={7} fontWeight="bold" fontFamily="monospace">
+        {actorLabel}
+      </text>
+      {/* Event label */}
       <text
         x={cx}
         y={cy - (meta.impact === 'high' ? 10 : 8)}
         textAnchor="middle"
-        fill={color}
-        fontSize={meta.impact === 'high' ? 8 : 7}
+        fill={actorColor}
+        fontSize={meta.impact === 'high' ? 7 : 6}
         fontWeight="bold"
         fontFamily="monospace"
       >
-        {meta.emoji} {payload.event}
+        [{actorLabel}] {payload.event}
       </text>
     </g>
   );
@@ -107,9 +111,11 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 fontSize: '11px',
               }}
               labelFormatter={v => `${v}'`}
-              formatter={(value: number, name: string, props: any) => {
+              formatter={(value: number, _name: string, props: any) => {
                 const ev = props?.payload?.event;
-                const label = ev ? `Price (${ev})` : 'Price';
+                const team = props?.payload?.team;
+                const actor = team === 'home' ? '[H]' : team === 'away' ? '[A]' : '';
+                const label = ev ? `Price (${actor} ${ev})` : 'Price';
                 return [`$${value.toFixed(4)}`, label];
               }}
             />
@@ -129,8 +135,14 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
       </div>
 
       <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-        <span>{homeTeam} positive → price ↑</span>
-        <span>{awayTeam} positive → price ↓</span>
+        <span>
+          <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: 'hsl(145, 55%, 42%)' }} />
+          [H] = {homeTeam}
+        </span>
+        <span>
+          <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: 'hsl(0, 68%, 50%)' }} />
+          [A] = {awayTeam}
+        </span>
       </div>
     </div>
   );

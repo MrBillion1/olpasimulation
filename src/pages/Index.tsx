@@ -21,6 +21,7 @@ interface PricePoint {
   minute: number;
   price: number;
   event?: string;
+  team?: 'home' | 'away';
 }
 
 interface MarketRuntime {
@@ -146,7 +147,7 @@ export default function Index() {
       }
 
       const newPrice = Math.max(0.10, Math.round((rt.currentPrice + priceMove * direction) * 10000) / 10000);
-      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType }];
+      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType, team }];
 
       const events = [...rt.state.events, ev];
       if (varActive) {
@@ -407,6 +408,7 @@ export default function Index() {
               setOpenTrades={setOpenTrades}
               closedTrades={closedTrades}
               setClosedTrades={setClosedTrades}
+              matchStates={Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]))}
             />
             <OrderBook
               currentPrice={activeRuntime.currentPrice}
