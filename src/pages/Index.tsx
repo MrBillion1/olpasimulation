@@ -241,17 +241,22 @@ export default function Index() {
     return { market: m, rt, goals: goals.length, cards: cards.length, shots: shots.length, lastEv };
   });
 
+  const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[11px] font-bold text-gold tracking-wider">OLPA DEX</span>
-          <span className="text-[10px] text-muted-foreground">
-            {activeMarket.contract} • {activeMarket.homeTeam} vs {activeMarket.awayTeam}
-          </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={startAll}
+            className="text-[9px] font-semibold px-3 py-1.5 rounded bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2"
+          >
+            ▶ AUTO
+          </button>
           <button
             onClick={() => setViewMode('events')}
             className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
@@ -276,61 +281,54 @@ export default function Index() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT: Vertical Contract Selector — shared across both views */}
-        <div className="w-[140px] shrink-0 border-r border-border bg-card/60 flex flex-col overflow-y-auto custom-scrollbar">
-          <div className="p-2">
-            <button
-              onClick={startAll}
-              className="w-full bg-gold text-primary-foreground font-semibold text-[9px] px-2 py-1.5 rounded
-                         hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mb-2"
-            >
-              ▶ AUTO
-            </button>
-          </div>
-          <div className="flex-1 px-1.5 pb-2 space-y-1">
-            {MARKETS.map(m => {
-              const active = m.id === activeMarketId;
-              const price = prices[m.id] ?? m.startPrice;
-              const change = priceChanges[m.id] ?? 0;
-              const changePct = m.startPrice > 0 ? (change / m.startPrice * 100) : 0;
-              const isUp = change >= 0;
-              const minute = matchMinutes[m.id] ?? 0;
-              const running = isRunningMap[m.id] ?? false;
+        {/* LEFT: Vertical Contract Selector — only on trade view */}
+        {viewMode === 'trade' && (
+          <div className="w-[140px] shrink-0 border-r border-border bg-card/60 flex flex-col overflow-y-auto custom-scrollbar">
+            <div className="flex-1 px-1.5 py-2 space-y-1">
+              {MARKETS.map(m => {
+                const active = m.id === activeMarketId;
+                const price = prices[m.id] ?? m.startPrice;
+                const change = priceChanges[m.id] ?? 0;
+                const changePct = m.startPrice > 0 ? (change / m.startPrice * 100) : 0;
+                const isUp = change >= 0;
+                const minute = matchMinutes[m.id] ?? 0;
+                const running = isRunningMap[m.id] ?? false;
 
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveMarketId(m.id)}
-                  className={`w-full text-left rounded-md px-2 py-2 transition-all active:scale-[0.98] ${
-                    active
-                      ? 'bg-secondary border border-[hsl(var(--gold-muted))]'
-                      : 'bg-transparent hover:bg-secondary/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[9px] font-bold text-gold truncate">
-                      {m.contract.split('/')[0]}
-                    </span>
-                    {running && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-                    )}
-                  </div>
-                  <div className="font-mono text-[11px] font-black tabular-nums text-foreground mt-0.5">
-                    ${price.toFixed(2)}
-                  </div>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className={`font-mono text-[8px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
-                      {isUp ? '▲' : '▼'}{Math.abs(changePct).toFixed(1)}%
-                    </span>
-                    <span className="text-[8px] text-muted-foreground font-mono">
-                      {minute > 0 ? `${minute}'` : '—'}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setActiveMarketId(m.id)}
+                    className={`w-full text-left rounded-md px-2 py-2 transition-all active:scale-[0.98] ${
+                      active
+                        ? 'bg-secondary border border-[hsl(var(--gold-muted))]'
+                        : 'bg-transparent hover:bg-secondary/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[9px] font-bold text-gold truncate">
+                        {m.contract}
+                      </span>
+                      {running && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+                      )}
+                    </div>
+                    <div className="font-mono text-[11px] font-black tabular-nums text-foreground mt-0.5">
+                      ${price.toFixed(2)}
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className={`font-mono text-[8px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
+                        {isUp ? '▲' : '▼'}{Math.abs(changePct).toFixed(1)}%
+                      </span>
+                      <span className="text-[8px] text-muted-foreground font-mono">
+                        {minute > 0 ? `${minute}'` : '—'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* MAIN CONTENT — instant flip between views */}
         <div className="flex-1 overflow-hidden">
@@ -346,6 +344,12 @@ export default function Index() {
               activeMarketId={activeMarketId}
               setActiveMarketId={setActiveMarketId}
               prices={prices}
+              priceChanges={priceChanges}
+              matchMinutes={matchMinutes}
+              isRunningMap={isRunningMap}
+              contractDropdownOpen={contractDropdownOpen}
+              setContractDropdownOpen={setContractDropdownOpen}
+              runtimes={runtimes}
             />
           ) : (
             <TradeView
@@ -388,41 +392,156 @@ interface EventViewProps {
   activeMarketId: string;
   setActiveMarketId: (id: string) => void;
   prices: Record<string, number>;
+  priceChanges: Record<string, number>;
+  matchMinutes: Record<string, number>;
+  isRunningMap: Record<string, boolean>;
+  contractDropdownOpen: boolean;
+  setContractDropdownOpen: (v: boolean) => void;
+  runtimes: Record<string, MarketRuntime>;
 }
 
 function EventView({
   activeMarket, activeRuntime, eventTab, setEventTab, allEvents, matchStates,
-  scoresData, activeMarketId, setActiveMarketId, prices,
+  scoresData, activeMarketId, setActiveMarketId, prices, priceChanges, matchMinutes,
+  isRunningMap, contractDropdownOpen, setContractDropdownOpen, runtimes,
 }: EventViewProps) {
   const ms = matchStates[activeMarketId];
   const isLive = ms?.isRunning;
   const minute = ms?.minute ?? 0;
+  const currentPrice = activeRuntime.currentPrice;
+  const change = priceChanges[activeMarketId] ?? 0;
+  const changePct = activeMarket.startPrice > 0 ? (change / activeMarket.startPrice * 100) : 0;
+  const isUp = change >= 0;
+  const totalEvents = activeRuntime.state.events.length;
+  const highImpact = activeRuntime.state.events.filter(e => e.impact === 'high').length;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Event tab bar */}
-      <div className="border-b border-border bg-card/60 px-4 py-1 flex items-center gap-4">
-        <div className="flex items-center gap-1">
+      {/* Hyperliquid-style contract header */}
+      <div className="border-b border-border bg-card/90">
+        {/* Row 1: Contract dropdown + stats */}
+        <div className="px-4 py-2 flex items-center gap-6">
+          {/* Contract dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setContractDropdownOpen(!contractDropdownOpen)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <span className="text-base font-bold text-foreground tracking-wide">
+                {activeMarket.contract}
+              </span>
+              <svg
+                className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${contractDropdownOpen ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown panel */}
+            {contractDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setContractDropdownOpen(false)} />
+                <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[280px] py-1 max-h-[400px] overflow-y-auto">
+                  {MARKETS.map(m => {
+                    const active = m.id === activeMarketId;
+                    const mPrice = prices[m.id] ?? m.startPrice;
+                    const mChange = priceChanges[m.id] ?? 0;
+                    const mChangePct = m.startPrice > 0 ? (mChange / m.startPrice * 100) : 0;
+                    const mIsUp = mChange >= 0;
+                    const mMinute = matchMinutes[m.id] ?? 0;
+                    const mRunning = isRunningMap[m.id] ?? false;
+
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          setActiveMarketId(m.id);
+                          setContractDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 flex items-center justify-between transition-colors ${
+                          active ? 'bg-secondary' : 'hover:bg-secondary/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {mRunning && <div className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />}
+                          <div>
+                            <div className="font-mono text-xs font-bold text-foreground">{m.contract}</div>
+                            <div className="text-[9px] text-muted-foreground mt-0.5">
+                              <span style={{ color: m.homeColor }}>{m.homeShort}</span>
+                              <span className="mx-1 text-muted-foreground/40">vs</span>
+                              <span style={{ color: m.awayColor }}>{m.awayShort}</span>
+                              {mMinute > 0 && <span className="ml-2">{mMinute}'</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono text-xs font-black tabular-nums text-foreground">
+                            ${mPrice.toFixed(4)}
+                          </div>
+                          <div className={`font-mono text-[10px] font-bold ${mIsUp ? 'text-accent' : 'text-destructive'}`}>
+                            {mIsUp ? '+' : ''}{mChangePct.toFixed(2)}%
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Stats bar — Hyperliquid style */}
+          <div className="flex items-center gap-6 ml-4">
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Price</div>
+              <div className="font-mono text-sm font-black tabular-nums text-foreground">${currentPrice.toFixed(4)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Change</div>
+              <div className={`font-mono text-sm font-bold tabular-nums ${isUp ? 'text-accent' : 'text-destructive'}`}>
+                {isUp ? '+' : ''}{change.toFixed(4)} / {isUp ? '+' : ''}{changePct.toFixed(2)}%
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Score</div>
+              <div className="font-mono text-sm font-black tabular-nums text-foreground">
+                {activeRuntime.state.homeScore} - {activeRuntime.state.awayScore}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Minute</div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-sm font-bold tabular-nums text-foreground">{minute}'</span>
+                {isLive && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Events</div>
+              <div className="font-mono text-sm font-bold tabular-nums text-foreground">{totalEvents}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">High Impact</div>
+              <div className="font-mono text-sm font-bold tabular-nums text-impact-high">{highImpact}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Tabs */}
+        <div className="px-4 pb-1 flex items-center gap-1">
           {(['events', 'commentary', 'scores'] as EventTab[]).map(tab => (
             <button
               key={tab}
               onClick={() => setEventTab(tab)}
               className={`text-[10px] font-semibold px-3 py-1 rounded transition-all capitalize ${
                 eventTab === tab
-                  ? 'bg-secondary text-gold'
+                  ? 'bg-secondary text-gold border-b-2 border-gold'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab === 'events' ? '⚡ Event Feed' : tab === 'commentary' ? '📺 Commentary' : '📊 Live Scores'}
             </button>
           ))}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {/* Mini match info */}
-          <span className="font-mono text-[10px] text-gold font-bold">{activeMarket.contract}</span>
-          <span className="font-mono text-[10px] text-foreground font-black">{activeRuntime.state.homeScore} - {activeRuntime.state.awayScore}</span>
-          <span className="font-mono text-[10px] text-muted-foreground">{minute}'</span>
-          {isLive && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
         </div>
       </div>
 
@@ -435,84 +554,67 @@ function EventView({
         </div>
       )}
 
-      {/* Content: side by side event stream + chart */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Event stream / Commentary / Scores */}
-        <div className="w-[45%] border-r border-border overflow-y-auto custom-scrollbar p-3">
-          {eventTab === 'events' && (
-            <EventFeed events={activeRuntime.state.events} />
-          )}
-          {eventTab === 'commentary' && (
-            <Commentary
-              allEvents={allEvents}
-              markets={MARKETS}
-              activeMarketId={activeMarketId}
-              matchStates={matchStates}
-            />
-          )}
-          {eventTab === 'scores' && (
-            <div className="space-y-1.5">
-              <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📊 Live Scores</h3>
-              {scoresData.map(({ market: m, rt, goals, cards, shots, lastEv }) => {
-                const active = m.id === activeMarketId;
-                const pChange = rt.currentPrice - m.startPrice;
-                const pChangePct = m.startPrice > 0 ? (pChange / m.startPrice * 100) : 0;
-                const isUp = pChange >= 0;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => setActiveMarketId(m.id)}
-                    className={`w-full text-left rounded-md p-2 transition-all ${
-                      active ? 'bg-secondary border border-[hsl(var(--gold-muted))]' : 'bg-secondary/30 hover:bg-secondary/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        {rt.state.isRunning && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
-                        <span className="font-mono text-[10px] text-gold font-bold">{m.contract.split('/')[0]}</span>
-                        <span className="text-[9px] text-muted-foreground font-mono">{rt.state.minute}'</span>
-                      </div>
-                      <span className={`font-mono text-[10px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
-                        ${rt.currentPrice.toFixed(4)} {isUp ? '▲' : '▼'}{Math.abs(pChangePct).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1 text-[10px]">
-                        <span style={{ color: m.homeColor }} className="font-semibold">{m.homeShort}</span>
-                        <span className="font-mono font-black text-foreground">{rt.state.homeScore} - {rt.state.awayScore}</span>
-                        <span style={{ color: m.awayColor }} className="font-semibold">{m.awayShort}</span>
-                      </div>
-                      <div className="flex gap-2 text-[8px] text-muted-foreground">
-                        <span>🎯{shots}</span>
-                        <span>🟨{cards}</span>
-                        <span>⚽{goals}</span>
-                      </div>
-                    </div>
-                    {lastEv && (
-                      <div className="text-[8px] text-muted-foreground/70 mt-0.5 truncate">
-                        {lastEv.minute}' — {lastEv.emoji} {lastEv.type} ({lastEv.team === 'home' ? m.homeShort : m.awayShort})
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Right: Price Chart */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-          <PriceChart
-            priceHistory={activeRuntime.priceHistory}
-            currentPrice={activeRuntime.currentPrice}
-            startPrice={activeMarket.startPrice}
-            contract={activeMarket.contract}
-            homeTeam={activeMarket.homeTeam}
-            awayTeam={activeMarket.awayTeam}
-            homeColor={activeMarket.homeColor}
-            awayColor={activeMarket.awayColor}
+      {/* Full-width content area */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+        {eventTab === 'events' && (
+          <EventFeed events={activeRuntime.state.events} />
+        )}
+        {eventTab === 'commentary' && (
+          <Commentary
+            allEvents={allEvents}
+            markets={MARKETS}
+            activeMarketId={activeMarketId}
+            matchStates={matchStates}
           />
-        </div>
+        )}
+        {eventTab === 'scores' && (
+          <div className="space-y-1.5">
+            <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📊 Live Scores</h3>
+            {scoresData.map(({ market: m, rt, goals, cards, shots, lastEv }) => {
+              const active = m.id === activeMarketId;
+              const pChange = rt.currentPrice - m.startPrice;
+              const pChangePct = m.startPrice > 0 ? (pChange / m.startPrice * 100) : 0;
+              const isUp2 = pChange >= 0;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setActiveMarketId(m.id)}
+                  className={`w-full text-left rounded-md p-2 transition-all ${
+                    active ? 'bg-secondary border border-[hsl(var(--gold-muted))]' : 'bg-secondary/30 hover:bg-secondary/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      {rt.state.isRunning && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
+                      <span className="font-mono text-[10px] text-gold font-bold">{m.contract}</span>
+                      <span className="text-[9px] text-muted-foreground font-mono">{rt.state.minute}'</span>
+                    </div>
+                    <span className={`font-mono text-[10px] font-bold ${isUp2 ? 'text-accent' : 'text-destructive'}`}>
+                      ${rt.currentPrice.toFixed(4)} {isUp2 ? '▲' : '▼'}{Math.abs(pChangePct).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <span style={{ color: m.homeColor }} className="font-semibold">{m.homeShort}</span>
+                      <span className="font-mono font-black text-foreground">{rt.state.homeScore} - {rt.state.awayScore}</span>
+                      <span style={{ color: m.awayColor }} className="font-semibold">{m.awayShort}</span>
+                    </div>
+                    <div className="flex gap-2 text-[8px] text-muted-foreground">
+                      <span>🎯{shots}</span>
+                      <span>🟨{cards}</span>
+                      <span>⚽{goals}</span>
+                    </div>
+                  </div>
+                  {lastEv && (
+                    <div className="text-[8px] text-muted-foreground/70 mt-0.5 truncate">
+                      {lastEv.minute}' — {lastEv.emoji} {lastEv.type} ({lastEv.team === 'home' ? m.homeShort : m.awayShort})
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
