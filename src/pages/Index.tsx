@@ -241,17 +241,22 @@ export default function Index() {
     return { market: m, rt, goals: goals.length, cards: cards.length, shots: shots.length, lastEv };
   });
 
+  const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[11px] font-bold text-gold tracking-wider">OLPA DEX</span>
-          <span className="text-[10px] text-muted-foreground">
-            {activeMarket.contract} • {activeMarket.homeTeam} vs {activeMarket.awayTeam}
-          </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={startAll}
+            className="text-[9px] font-semibold px-3 py-1.5 rounded bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2"
+          >
+            ▶ AUTO
+          </button>
           <button
             onClick={() => setViewMode('events')}
             className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
@@ -276,61 +281,54 @@ export default function Index() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT: Vertical Contract Selector — shared across both views */}
-        <div className="w-[140px] shrink-0 border-r border-border bg-card/60 flex flex-col overflow-y-auto custom-scrollbar">
-          <div className="p-2">
-            <button
-              onClick={startAll}
-              className="w-full bg-gold text-primary-foreground font-semibold text-[9px] px-2 py-1.5 rounded
-                         hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mb-2"
-            >
-              ▶ AUTO
-            </button>
-          </div>
-          <div className="flex-1 px-1.5 pb-2 space-y-1">
-            {MARKETS.map(m => {
-              const active = m.id === activeMarketId;
-              const price = prices[m.id] ?? m.startPrice;
-              const change = priceChanges[m.id] ?? 0;
-              const changePct = m.startPrice > 0 ? (change / m.startPrice * 100) : 0;
-              const isUp = change >= 0;
-              const minute = matchMinutes[m.id] ?? 0;
-              const running = isRunningMap[m.id] ?? false;
+        {/* LEFT: Vertical Contract Selector — only on trade view */}
+        {viewMode === 'trade' && (
+          <div className="w-[140px] shrink-0 border-r border-border bg-card/60 flex flex-col overflow-y-auto custom-scrollbar">
+            <div className="flex-1 px-1.5 py-2 space-y-1">
+              {MARKETS.map(m => {
+                const active = m.id === activeMarketId;
+                const price = prices[m.id] ?? m.startPrice;
+                const change = priceChanges[m.id] ?? 0;
+                const changePct = m.startPrice > 0 ? (change / m.startPrice * 100) : 0;
+                const isUp = change >= 0;
+                const minute = matchMinutes[m.id] ?? 0;
+                const running = isRunningMap[m.id] ?? false;
 
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveMarketId(m.id)}
-                  className={`w-full text-left rounded-md px-2 py-2 transition-all active:scale-[0.98] ${
-                    active
-                      ? 'bg-secondary border border-[hsl(var(--gold-muted))]'
-                      : 'bg-transparent hover:bg-secondary/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[9px] font-bold text-gold truncate">
-                      {m.contract.split('/')[0]}
-                    </span>
-                    {running && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-                    )}
-                  </div>
-                  <div className="font-mono text-[11px] font-black tabular-nums text-foreground mt-0.5">
-                    ${price.toFixed(2)}
-                  </div>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className={`font-mono text-[8px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
-                      {isUp ? '▲' : '▼'}{Math.abs(changePct).toFixed(1)}%
-                    </span>
-                    <span className="text-[8px] text-muted-foreground font-mono">
-                      {minute > 0 ? `${minute}'` : '—'}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setActiveMarketId(m.id)}
+                    className={`w-full text-left rounded-md px-2 py-2 transition-all active:scale-[0.98] ${
+                      active
+                        ? 'bg-secondary border border-[hsl(var(--gold-muted))]'
+                        : 'bg-transparent hover:bg-secondary/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[9px] font-bold text-gold truncate">
+                        {m.contract}
+                      </span>
+                      {running && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+                      )}
+                    </div>
+                    <div className="font-mono text-[11px] font-black tabular-nums text-foreground mt-0.5">
+                      ${price.toFixed(2)}
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className={`font-mono text-[8px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
+                        {isUp ? '▲' : '▼'}{Math.abs(changePct).toFixed(1)}%
+                      </span>
+                      <span className="text-[8px] text-muted-foreground font-mono">
+                        {minute > 0 ? `${minute}'` : '—'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* MAIN CONTENT — instant flip between views */}
         <div className="flex-1 overflow-hidden">
@@ -346,6 +344,12 @@ export default function Index() {
               activeMarketId={activeMarketId}
               setActiveMarketId={setActiveMarketId}
               prices={prices}
+              priceChanges={priceChanges}
+              matchMinutes={matchMinutes}
+              isRunningMap={isRunningMap}
+              contractDropdownOpen={contractDropdownOpen}
+              setContractDropdownOpen={setContractDropdownOpen}
+              runtimes={runtimes}
             />
           ) : (
             <TradeView
