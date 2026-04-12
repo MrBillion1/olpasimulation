@@ -201,6 +201,24 @@ export default function Index() {
     fireEvent,
   ]);
 
+  const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
+
+  const prices: Record<string, number> = {};
+  const priceChanges: Record<string, number> = {};
+  const matchMinutes: Record<string, number> = {};
+  const isRunningMap: Record<string, boolean> = {};
+  const latestEvents: Record<string, MatchEvent | undefined> = {};
+  const allEvents: Record<string, MatchEvent[]> = {};
+  MARKETS.forEach(m => {
+    const rt = runtimes[m.id];
+    prices[m.id] = rt.currentPrice;
+    priceChanges[m.id] = rt.currentPrice - m.startPrice;
+    matchMinutes[m.id] = rt.state.minute;
+    isRunningMap[m.id] = rt.state.isRunning;
+    latestEvents[m.id] = rt.state.events[rt.state.events.length - 1];
+    allEvents[m.id] = rt.state.events;
+  });
+
   // Limit order execution
   useEffect(() => {
     if (limitOrders.length === 0) return;
@@ -210,8 +228,6 @@ export default function Index() {
       prev.forEach(order => {
         const mPrice = prices[order.marketId];
         if (!mPrice) { remaining.push(order); return; }
-        // Buy limit: execute when price drops to or below limit
-        // Sell limit: execute when price rises to or above limit
         const shouldFill = order.direction === 'long'
           ? mPrice <= order.limitPrice
           : mPrice >= order.limitPrice;
@@ -247,45 +263,6 @@ export default function Index() {
       return remaining;
     });
   }, [prices]);
-
-  const startAll = () => {
-    setRuntimes(prev => {
-      const next = { ...prev };
-      MARKETS.forEach(m => {
-        if (next[m.id].state.minute >= 90) {
-          next[m.id] = createRuntime(m);
-        }
-        next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
-      });
-      return next;
-    });
-  };
-
-  const cancelLimitOrder = (orderId: number) => {
-    const order = limitOrders.find(o => o.id === orderId);
-    if (order) {
-      setBalance(b => Math.round((b + order.size) * 100) / 100);
-    }
-    setLimitOrders(prev => prev.filter(o => o.id !== orderId));
-  };
-
-  const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
-
-  const prices: Record<string, number> = {};
-  const priceChanges: Record<string, number> = {};
-  const matchMinutes: Record<string, number> = {};
-  const isRunningMap: Record<string, boolean> = {};
-  const latestEvents: Record<string, MatchEvent | undefined> = {};
-  const allEvents: Record<string, MatchEvent[]> = {};
-  MARKETS.forEach(m => {
-    const rt = runtimes[m.id];
-    prices[m.id] = rt.currentPrice;
-    priceChanges[m.id] = rt.currentPrice - m.startPrice;
-    matchMinutes[m.id] = rt.state.minute;
-    isRunningMap[m.id] = rt.state.isRunning;
-    latestEvents[m.id] = rt.state.events[rt.state.events.length - 1];
-    allEvents[m.id] = rt.state.events;
-  });
 
   const matchStates = Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]));
 
