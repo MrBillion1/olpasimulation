@@ -14,6 +14,7 @@ export interface OpenTrade {
   liquidationPrice: number;
   stopLoss: number | null;
   takeProfit: number | null;
+  marginMode: 'cross' | 'isolated';
 }
 
 export interface ClosedTrade {
@@ -25,7 +26,21 @@ export interface ClosedTrade {
   size: number;
   leverage: number;
   pnl: number;
-  reason: 'manual' | 'liquidated' | 'expired' | 'counter-closed' | 'stop-loss' | 'take-profit';
+  reason: 'manual' | 'liquidated' | 'expired' | 'counter-closed' | 'stop-loss' | 'take-profit' | 'limit-filled';
+}
+
+export interface LimitOrder {
+  id: number;
+  marketId: string;
+  contract: string;
+  direction: 'long' | 'short';
+  limitPrice: number;
+  size: number;
+  leverage: number;
+  timestamp: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  marginMode: 'cross' | 'isolated';
 }
 
 interface TradePanelProps {
@@ -39,6 +54,7 @@ interface TradePanelProps {
   closedTrades: ClosedTrade[];
   setClosedTrades: React.Dispatch<React.SetStateAction<ClosedTrade[]>>;
   matchStates: Record<string, { isRunning: boolean; minute: number }>;
+  onPlaceLimitOrder: (order: LimitOrder) => void;
 }
 
 let tradeIdCounter = 0;
@@ -46,16 +62,25 @@ let tradeIdCounter = 0;
 export default function TradePanel({
   activeMarket, prices, latestEvents, balance, setBalance,
   openTrades, setOpenTrades, closedTrades, setClosedTrades, matchStates,
+  onPlaceLimitOrder,
 }: TradePanelProps) {
   const [tradeSize, setTradeSize] = useState(100);
   const [leverage, setLeverage] = useState(5);
   const [slEnabled, setSlEnabled] = useState(false);
   const [tpEnabled, setTpEnabled] = useState(false);
-  const [slPct, setSlPct] = useState(5); // SL as % from entry
-  const [tpPct, setTpPct] = useState(10); // TP as % from entry
+  const [slPct, setSlPct] = useState(5);
+  const [tpPct, setTpPct] = useState(10);
+  const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
+  const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('cross');
+  const [limitPrice, setLimitPrice] = useState('');
 
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
+
+  // Sync limit price placeholder when price changes
+  useEffect(() => {
+    if (!limitPrice) return;
+  }, [currentPrice]);
 
   const calcLiqPrice = (entry: number, dir: 'long' | 'short', lev: number) => {
     if (dir === 'long') return Math.round(entry * (1 - 1 / lev) * 10000) / 10000;
@@ -92,7 +117,7 @@ export default function TradePanel({
     }, ...c].slice(0, 50));
   };
 
-  // Auto-liquidation + SL/TP check across ALL markets
+  // Auto-liquidation + SL/TP check
   useEffect(() => {
     setOpenTrades(prev => {
       const stillOpen: OpenTrade[] = [];
@@ -102,12 +127,9 @@ export default function TradePanel({
         const isLiquidated = t.direction === 'long'
           ? mPrice <= t.liquidationPrice
           : mPrice >= t.liquidationPrice;
-
-        // SL check
         const slHit = t.stopLoss !== null && (
           t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss
         );
-        // TP check
         const tpHit = t.takeProfit !== null && (
           t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit
         );
@@ -128,7 +150,6 @@ export default function TradePanel({
             entryPrice: t.entryPrice, exitPrice: exitP,
             size: t.size, leverage: t.leverage, pnl, reason: 'stop-loss',
           });
-          // Return margin + pnl
           const ret = t.size + pnl;
           setBalance(b => Math.round((b + Math.max(0, ret)) * 100) / 100);
         } else if (tpHit) {
@@ -154,7 +175,7 @@ export default function TradePanel({
     });
   }, [prices, setOpenTrades, setClosedTrades, setBalance]);
 
-  // CONTRACT EXPIRY: Force-close all trades on markets that reach full-time
+  // Contract expiry
   useEffect(() => {
     if (!matchStates) return;
     Object.entries(matchStates).forEach(([marketId, ms]) => {
@@ -182,11 +203,33 @@ export default function TradePanel({
 
   const openTrade = (direction: 'long' | 'short') => {
     if (tradeSize > balance || tradeSize <= 0) return;
-
     const ms = matchStates?.[activeMarket.id];
     if (ms && ms.minute >= 90 && !ms.isRunning) return;
 
-    // COUNTER TRADE: Close existing opposite position on same contract first
+    if (orderType === 'limit') {
+      const lp = parseFloat(limitPrice);
+      if (isNaN(lp) || lp <= 0) return;
+      const { sl, tp } = calcSlTp(lp, direction);
+      const order: LimitOrder = {
+        id: ++tradeIdCounter,
+        marketId: activeMarket.id,
+        contract: activeMarket.contract,
+        direction,
+        limitPrice: lp,
+        size: tradeSize,
+        leverage,
+        timestamp: Date.now(),
+        stopLoss: sl,
+        takeProfit: tp,
+        marginMode,
+      };
+      setBalance(b => Math.round((b - tradeSize) * 100) / 100);
+      onPlaceLimitOrder(order);
+      setLimitPrice('');
+      return;
+    }
+
+    // Market order
     const existingOnMarket = openTrades.filter(t => t.marketId === activeMarket.id);
     const opposites = existingOnMarket.filter(t => t.direction !== direction);
     opposites.forEach(t => closeTrade(t, 'counter-closed'));
@@ -197,80 +240,107 @@ export default function TradePanel({
       id: ++tradeIdCounter, marketId: activeMarket.id, contract: activeMarket.contract,
       direction, entryPrice: currentPrice, size: tradeSize, leverage,
       timestamp: Date.now(), minute: latestEvent?.minute ?? 0, liquidationPrice: liqPrice,
-      stopLoss: sl, takeProfit: tp,
+      stopLoss: sl, takeProfit: tp, marginMode,
     };
     setBalance(b => Math.round((b - tradeSize) * 100) / 100);
     setOpenTrades(t => [trade, ...t]);
   };
 
-  const totalUnrealizedPnl = openTrades.reduce((sum, t) => {
-    const mPrice = prices[t.marketId] ?? t.entryPrice;
-    const diff = mPrice - t.entryPrice;
-    const dir = t.direction === 'long' ? 1 : -1;
-    return sum + ((diff / t.entryPrice) * t.size * t.leverage * dir);
-  }, 0);
-
-  const totalMargin = openTrades.reduce((s, t) => s + t.size, 0);
-  const pnlPct = totalMargin > 0 ? (totalUnrealizedPnl / totalMargin * 100) : 0;
-
   const isExpired = matchStates?.[activeMarket.id]?.minute >= 90 && !matchStates?.[activeMarket.id]?.isRunning;
 
-  // Preview SL/TP prices for current settings
-  const previewSl = slEnabled ? (calcSlTp(currentPrice, 'long').sl) : null;
-  const previewTp = tpEnabled ? (calcSlTp(currentPrice, 'long').tp) : null;
-
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Trade {activeMarket.contract}</h3>
-        <span className="font-mono text-sm font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
+    <div className="bg-card border border-border rounded-lg p-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[10px] uppercase tracking-widest text-gold font-semibold">Trade</h3>
+        <span className="font-mono text-[11px] font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
       </div>
 
       {isExpired && (
-        <div className="text-center py-2 mb-3 bg-muted/30 rounded border border-border">
-          <span className="text-[10px] text-muted-foreground font-semibold">🏁 Contract expired — Trading disabled</span>
-        </div>
-      )}
-
-      {latestEvent && !isExpired && (
-        <div className="bg-secondary/50 rounded-md p-2 mb-3 border border-[hsl(var(--gold-muted))]">
-          <p className="text-[10px] text-muted-foreground">
-            {latestEvent.emoji} <span className="text-foreground font-medium">{latestEvent.type}</span> @ {latestEvent.minute}′
-            <span className={`ml-1 text-[9px] uppercase font-semibold ${
-              latestEvent.impact === 'high' ? 'text-impact-high' : latestEvent.impact === 'medium' ? 'text-impact-medium' : 'text-impact-low'
-            }`}>{latestEvent.impact}</span>
-            <span className={`ml-1 text-[9px] ${
-              getEventSentiment(latestEvent.type) === 'positive' ? 'text-accent' : getEventSentiment(latestEvent.type) === 'negative' ? 'text-destructive' : 'text-muted-foreground'
-            }`}>
-              ({latestEvent.team === 'home' ? activeMarket.homeTeam : activeMarket.awayTeam} • {getEventSentiment(latestEvent.type)})
-            </span>
-          </p>
+        <div className="text-center py-2 mb-2 bg-muted/30 rounded border border-border">
+          <span className="text-[10px] text-muted-foreground font-semibold">🏁 Contract expired</span>
         </div>
       )}
 
       {!isExpired && (
         <>
+          {/* Cross / Isolated */}
+          <div className="flex gap-1 mb-2">
+            {(['cross', 'isolated'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setMarginMode(mode)}
+                className={`flex-1 text-[9px] py-1 rounded font-semibold uppercase tracking-wider transition-all ${
+                  marginMode === mode
+                    ? 'bg-gold text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          {/* Market / Limit */}
+          <div className="flex gap-1 mb-2">
+            {(['market', 'limit'] as const).map(ot => (
+              <button
+                key={ot}
+                onClick={() => setOrderType(ot)}
+                className={`flex-1 text-[9px] py-1 rounded font-semibold uppercase tracking-wider transition-all ${
+                  orderType === ot
+                    ? 'bg-secondary text-foreground border border-border'
+                    : 'bg-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {ot}
+              </button>
+            ))}
+          </div>
+
+          {/* Limit price input */}
+          {orderType === 'limit' && (
+            <div className="mb-2">
+              <label className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-0.5">Limit Price</label>
+              <input
+                type="number"
+                step="0.0001"
+                value={limitPrice}
+                onChange={e => setLimitPrice(e.target.value)}
+                placeholder={currentPrice.toFixed(4)}
+                className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-[11px] font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold"
+              />
+              {limitPrice && (
+                <div className="text-[8px] text-muted-foreground mt-0.5 font-mono">
+                  {parseFloat(limitPrice) < currentPrice ? '↓ Below market' : '↑ Above market'} • Δ{Math.abs(((parseFloat(limitPrice) - currentPrice) / currentPrice) * 100).toFixed(2)}%
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Position size */}
           <div className="mb-2">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Position Size (Margin)</label>
+            <label className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-0.5">Size (USDT)</label>
             <input
               type="range" min={10} max={Math.min(2000, balance)} step={10}
               value={tradeSize} onChange={e => setTradeSize(Number(e.target.value))}
               className="w-full accent-[hsl(var(--gold))] h-1"
             />
-            <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
+            <div className="flex justify-between text-[9px] font-mono text-muted-foreground">
               <span>${tradeSize}</span>
-              <span className="text-[9px]">Notional: ${(tradeSize * leverage).toFixed(0)}</span>
+              <span>Notional: ${(tradeSize * leverage).toFixed(0)}</span>
             </div>
           </div>
 
-          <div className="mb-3">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Leverage</label>
-            <div className="flex gap-1">
+          {/* Leverage */}
+          <div className="mb-2">
+            <label className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-0.5">Leverage</label>
+            <div className="flex gap-0.5">
               {[1, 2, 5, 10, 20].map(lev => (
                 <button
                   key={lev}
                   onClick={() => setLeverage(lev)}
-                  className={`flex-1 text-[10px] py-1 rounded font-semibold transition-all ${
+                  className={`flex-1 text-[9px] py-1 rounded font-semibold transition-all ${
                     leverage === lev
                       ? 'bg-gold text-primary-foreground'
                       : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -280,185 +350,86 @@ export default function TradePanel({
                 </button>
               ))}
             </div>
-            <div className="text-[9px] text-muted-foreground mt-1 font-mono">
-              Liq. (long): ${calcLiqPrice(currentPrice, 'long', leverage).toFixed(4)} •
-              (short): ${calcLiqPrice(currentPrice, 'short', leverage).toFixed(4)}
-            </div>
           </div>
 
-          {/* SL/TP Controls */}
-          <div className="mb-3 space-y-2">
-            <div className="flex items-center gap-3">
+          {/* SL/TP */}
+          <div className="mb-2 space-y-1">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setSlEnabled(!slEnabled)}
-                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded transition-all ${
+                className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded transition-all ${
                   slEnabled ? 'bg-destructive/20 text-destructive border border-destructive/40' : 'bg-secondary text-muted-foreground'
                 }`}
               >
-                <span className="text-[8px]">🛑</span> SL {slEnabled ? 'ON' : 'OFF'}
+                SL {slEnabled ? 'ON' : 'OFF'}
               </button>
               <button
                 onClick={() => setTpEnabled(!tpEnabled)}
-                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded transition-all ${
+                className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded transition-all ${
                   tpEnabled ? 'bg-accent/20 text-accent border border-accent/40' : 'bg-secondary text-muted-foreground'
                 }`}
               >
-                <span className="text-[8px]">🎯</span> TP {tpEnabled ? 'ON' : 'OFF'}
+                TP {tpEnabled ? 'ON' : 'OFF'}
               </button>
             </div>
-
             {(slEnabled || tpEnabled) && (
-              <div className="bg-secondary/30 rounded p-2 border border-border space-y-1.5">
+              <div className="bg-secondary/30 rounded p-1.5 border border-border space-y-1">
                 {slEnabled && (
                   <div>
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-destructive font-semibold uppercase tracking-wider">Stop Loss ({slPct}%)</label>
-                      <span className="text-[9px] font-mono text-muted-foreground">
-                        L: ${(currentPrice * (1 - slPct / 100)).toFixed(4)} • S: ${(currentPrice * (1 + slPct / 100)).toFixed(4)}
+                      <label className="text-[8px] text-destructive font-semibold uppercase">SL {slPct}%</label>
+                      <span className="text-[8px] font-mono text-muted-foreground">
+                        ${(currentPrice * (1 - slPct / 100)).toFixed(4)}
                       </span>
                     </div>
-                    <input
-                      type="range" min={1} max={50} step={1}
-                      value={slPct} onChange={e => setSlPct(Number(e.target.value))}
-                      className="w-full accent-destructive h-1"
-                    />
+                    <input type="range" min={1} max={50} step={1} value={slPct} onChange={e => setSlPct(Number(e.target.value))}
+                      className="w-full accent-destructive h-1" />
                   </div>
                 )}
                 {tpEnabled && (
                   <div>
                     <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-accent font-semibold uppercase tracking-wider">Take Profit ({tpPct}%)</label>
-                      <span className="text-[9px] font-mono text-muted-foreground">
-                        L: ${(currentPrice * (1 + tpPct / 100)).toFixed(4)} • S: ${(currentPrice * (1 - tpPct / 100)).toFixed(4)}
+                      <label className="text-[8px] text-accent font-semibold uppercase">TP {tpPct}%</label>
+                      <span className="text-[8px] font-mono text-muted-foreground">
+                        ${(currentPrice * (1 + tpPct / 100)).toFixed(4)}
                       </span>
                     </div>
-                    <input
-                      type="range" min={1} max={100} step={1}
-                      value={tpPct} onChange={e => setTpPct(Number(e.target.value))}
-                      className="w-full accent-[hsl(var(--accent))] h-1"
-                    />
+                    <input type="range" min={1} max={100} step={1} value={tpPct} onChange={e => setTpPct(Number(e.target.value))}
+                      className="w-full accent-[hsl(var(--accent))] h-1" />
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
+          {/* Buy/Sell */}
+          <div className="grid grid-cols-2 gap-1.5 mb-2">
             <button
               onClick={() => openTrade('long')}
               disabled={tradeSize > balance}
-              className="bg-accent text-accent-foreground font-semibold text-xs py-2.5 rounded-md
+              className="bg-accent text-accent-foreground font-semibold text-[10px] py-2 rounded
                          hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
             >
-              Long / Buy
-              <div className="font-mono text-[9px] opacity-80">Price ↑ = Profit</div>
+              {orderType === 'limit' ? 'Limit' : ''} Long / Buy
             </button>
             <button
               onClick={() => openTrade('short')}
               disabled={tradeSize > balance}
-              className="bg-destructive text-destructive-foreground font-semibold text-xs py-2.5 rounded-md
+              className="bg-destructive text-destructive-foreground font-semibold text-[10px] py-2 rounded
                          hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
             >
-              Short / Sell
-              <div className="font-mono text-[9px] opacity-80">Price ↓ = Profit</div>
+              {orderType === 'limit' ? 'Limit' : ''} Short / Sell
             </button>
           </div>
+
+          {/* Margin mode info */}
+          <div className="text-[8px] text-muted-foreground font-mono border-t border-border pt-1">
+            <span className="text-gold uppercase font-semibold">{marginMode}</span>
+            {marginMode === 'cross' && ' • Shared margin across positions'}
+            {marginMode === 'isolated' && ' • Isolated margin per position'}
+            <span className="ml-1">• Liq: ${calcLiqPrice(currentPrice, 'long', leverage).toFixed(4)}</span>
+          </div>
         </>
-      )}
-
-      {openTrades.length > 0 && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">All Positions ({openTrades.length})</span>
-            <span className={`font-mono text-[10px] font-bold ${totalUnrealizedPnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-              uPnL: {totalUnrealizedPnl >= 0 ? '+' : ''}{totalUnrealizedPnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%)
-            </span>
-          </div>
-          <div className="space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
-            {openTrades.map(t => {
-              const mPrice = prices[t.marketId] ?? t.entryPrice;
-              const diff = mPrice - t.entryPrice;
-              const dir = t.direction === 'long' ? 1 : -1;
-              const pnl = (diff / t.entryPrice) * t.size * t.leverage * dir;
-              const pnlPctTrade = (pnl / t.size) * 100;
-              const isNearLiq = t.direction === 'long'
-                ? mPrice < t.entryPrice * (1 - 0.7 / t.leverage)
-                : mPrice > t.entryPrice * (1 + 0.7 / t.leverage);
-              return (
-                <div key={t.id} className={`bg-secondary/40 rounded px-2 py-1.5 text-[10px] ${
-                  isNearLiq ? 'border border-[hsl(var(--impact-high)/0.5)] animate-impact-pulse' : ''
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-gold font-mono text-[8px]">{t.contract.split('/')[0]}</span>
-                      <span className={`ml-1 font-semibold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
-                        {t.direction.toUpperCase()}
-                      </span>
-                      <span className="text-muted-foreground ml-1">{t.leverage}x</span>
-                      <span className="text-muted-foreground ml-1 font-mono">${t.entryPrice.toFixed(4)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <span className={`font-mono font-bold ${pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
-                        </span>
-                        <span className={`text-[8px] ml-1 ${pnl >= 0 ? 'text-accent/70' : 'text-destructive/70'}`}>
-                          ({pnlPctTrade >= 0 ? '+' : ''}{pnlPctTrade.toFixed(0)}%)
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => closeTrade(t, 'manual')}
-                        className="text-[9px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-                  {/* SL/TP indicators */}
-                  {(t.stopLoss !== null || t.takeProfit !== null) && (
-                    <div className="flex gap-3 mt-0.5">
-                      {t.stopLoss !== null && (
-                        <span className="text-[8px] font-mono text-destructive/80">
-                          🛑 SL: ${t.stopLoss.toFixed(4)}
-                        </span>
-                      )}
-                      {t.takeProfit !== null && (
-                        <span className="text-[8px] font-mono text-accent/80">
-                          🎯 TP: ${t.takeProfit.toFixed(4)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {closedTrades.length > 0 && (
-        <div>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block mb-1">History</span>
-          <div className="space-y-0.5 max-h-[80px] overflow-y-auto custom-scrollbar">
-            {closedTrades.slice(0, 20).map(t => (
-              <div key={t.id} className="flex justify-between text-[9px] text-muted-foreground font-mono">
-                <span>
-                  <span className="text-gold">{t.contract.split('/')[0]}</span>{' '}
-                  <span className={t.direction === 'long' ? 'text-accent' : 'text-destructive'}>{t.direction}</span>
-                  {' '}{t.leverage}x
-                  {t.reason === 'liquidated' && <span className="text-impact-high ml-1">LIQ</span>}
-                  {t.reason === 'expired' && <span className="text-gold ml-1">EXP</span>}
-                  {t.reason === 'counter-closed' && <span className="text-muted-foreground ml-1">NET</span>}
-                  {t.reason === 'stop-loss' && <span className="text-destructive ml-1">SL</span>}
-                  {t.reason === 'take-profit' && <span className="text-accent ml-1">TP</span>}
-                </span>
-                <span className={`font-bold ${t.pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                  {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
     </div>
   );
