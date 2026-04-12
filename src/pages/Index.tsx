@@ -264,6 +264,27 @@ export default function Index() {
     });
   }, [prices]);
 
+  const startAll = () => {
+    setRuntimes(prev => {
+      const next = { ...prev };
+      MARKETS.forEach(m => {
+        if (next[m.id].state.minute >= 90) {
+          next[m.id] = createRuntime(m);
+        }
+        next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
+      });
+      return next;
+    });
+  };
+
+  const cancelLimitOrder = (orderId: number) => {
+    const order = limitOrders.find(o => o.id === orderId);
+    if (order) {
+      setBalance(b => Math.round((b + order.size) * 100) / 100);
+    }
+    setLimitOrders(prev => prev.filter(o => o.id !== orderId));
+  };
+
   const matchStates = Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]));
 
   const scoresData = MARKETS.map(m => {
