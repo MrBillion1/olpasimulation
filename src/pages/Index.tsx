@@ -6,11 +6,10 @@ import {
   MARKETS, pickTeam,
 } from '@/lib/match-engine';
 import EventFeed from '@/components/EventFeed';
-import TradePanel, { OpenTrade, ClosedTrade } from '@/components/TradePanel';
+import TradePanel, { OpenTrade, ClosedTrade, LimitOrder } from '@/components/TradePanel';
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
 import OrderBook from '@/components/OrderBook';
-import MarketSelector from '@/components/MarketSelector';
 
 interface PricePoint {
   minute: number;
@@ -38,12 +37,14 @@ function createRuntime(config: MarketConfig): MarketRuntime {
 }
 
 type ViewMode = 'events' | 'trade';
-type EventTab = 'events' | 'commentary' | 'scores';
+type EventTab = 'simulation' | 'feed' | 'commentary' | 'scores' | 'possession';
+type PositionTab = 'positions' | 'open-orders' | 'trade-history' | 'order-history';
 
 export default function Index() {
   const [activeMarketId, setActiveMarketId] = useState(MARKETS[0].id);
   const [viewMode, setViewMode] = useState<ViewMode>('events');
-  const [eventTab, setEventTab] = useState<EventTab>('events');
+  const [eventTab, setEventTab] = useState<EventTab>('simulation');
+  const [positionTab, setPositionTab] = useState<PositionTab>('positions');
   const [runtimes, setRuntimes] = useState<Record<string, MarketRuntime>>(() => {
     const r: Record<string, MarketRuntime> = {};
     MARKETS.forEach(m => { r[m.id] = createRuntime(m); });
@@ -53,6 +54,8 @@ export default function Index() {
   const [balance, setBalance] = useState(10000);
   const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
+  const [limitOrders, setLimitOrders] = useState<LimitOrder[]>([]);
+  const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
 
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const eventTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -60,7 +63,7 @@ export default function Index() {
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
 
-  // Clock tick — 2min30s match
+  // Clock tick
   useEffect(() => {
     clockRef.current = setInterval(() => {
       setRuntimes(prev => {
@@ -198,6 +201,53 @@ export default function Index() {
     fireEvent,
   ]);
 
+  // Limit order execution
+  useEffect(() => {
+    if (limitOrders.length === 0) return;
+    setLimitOrders(prev => {
+      const remaining: LimitOrder[] = [];
+      const toExecute: LimitOrder[] = [];
+      prev.forEach(order => {
+        const mPrice = prices[order.marketId];
+        if (!mPrice) { remaining.push(order); return; }
+        // Buy limit: execute when price drops to or below limit
+        // Sell limit: execute when price rises to or above limit
+        const shouldFill = order.direction === 'long'
+          ? mPrice <= order.limitPrice
+          : mPrice >= order.limitPrice;
+        if (shouldFill) {
+          toExecute.push(order);
+        } else {
+          remaining.push(order);
+        }
+      });
+      if (toExecute.length > 0) {
+        toExecute.forEach(order => {
+          const liqPrice = order.direction === 'long'
+            ? Math.round(order.limitPrice * (1 - 1 / order.leverage) * 10000) / 10000
+            : Math.round(order.limitPrice * (1 + 1 / order.leverage) * 10000) / 10000;
+          const trade: OpenTrade = {
+            id: order.id,
+            marketId: order.marketId,
+            contract: order.contract,
+            direction: order.direction,
+            entryPrice: order.limitPrice,
+            size: order.size,
+            leverage: order.leverage,
+            timestamp: Date.now(),
+            minute: runtimes[order.marketId]?.state.minute ?? 0,
+            liquidationPrice: liqPrice,
+            stopLoss: order.stopLoss,
+            takeProfit: order.takeProfit,
+            marginMode: order.marginMode,
+          };
+          setOpenTrades(t => [trade, ...t]);
+        });
+      }
+      return remaining;
+    });
+  }, [prices]);
+
   const startAll = () => {
     setRuntimes(prev => {
       const next = { ...prev };
@@ -209,6 +259,14 @@ export default function Index() {
       });
       return next;
     });
+  };
+
+  const cancelLimitOrder = (orderId: number) => {
+    const order = limitOrders.find(o => o.id === orderId);
+    if (order) {
+      setBalance(b => Math.round((b + order.size) * 100) / 100);
+    }
+    setLimitOrders(prev => prev.filter(o => o.id !== orderId));
   };
 
   const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
@@ -231,7 +289,6 @@ export default function Index() {
 
   const matchStates = Object.fromEntries(MARKETS.map(m => [m.id, { isRunning: runtimes[m.id].state.isRunning, minute: runtimes[m.id].state.minute }]));
 
-  // Scores summary for live scores tab
   const scoresData = MARKETS.map(m => {
     const rt = runtimes[m.id];
     const goals = rt.state.events.filter(e => e.type === 'Goal' || e.type === 'Penalty' || e.type === 'Own Goal');
@@ -241,7 +298,107 @@ export default function Index() {
     return { market: m, rt, goals: goals.length, cards: cards.length, shots: shots.length, lastEv };
   });
 
-  const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
+  // Contract dropdown component (shared between views)
+  const ContractDropdown = () => (
+    <div className="relative">
+      <button
+        onClick={() => setContractDropdownOpen(!contractDropdownOpen)}
+        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+      >
+        <span className="text-sm font-bold text-foreground tracking-wide">
+          {activeMarket.contract}
+        </span>
+        <svg
+          className={`w-3 h-3 text-muted-foreground transition-transform ${contractDropdownOpen ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {contractDropdownOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContractDropdownOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[280px] py-1 max-h-[400px] overflow-y-auto">
+            {MARKETS.map(m => {
+              const active = m.id === activeMarketId;
+              const mPrice = prices[m.id] ?? m.startPrice;
+              const mChange = priceChanges[m.id] ?? 0;
+              const mChangePct = m.startPrice > 0 ? (mChange / m.startPrice * 100) : 0;
+              const mIsUp = mChange >= 0;
+              const mMinute = matchMinutes[m.id] ?? 0;
+              const mRunning = isRunningMap[m.id] ?? false;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => { setActiveMarketId(m.id); setContractDropdownOpen(false); }}
+                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between transition-colors ${
+                    active ? 'bg-secondary' : 'hover:bg-secondary/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {mRunning && <div className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />}
+                    <div>
+                      <div className="font-mono text-xs font-bold text-foreground">{m.contract}</div>
+                      <div className="text-[9px] text-muted-foreground mt-0.5">
+                        <span style={{ color: m.homeColor }}>{m.homeShort}</span>
+                        <span className="mx-1 text-muted-foreground/40">vs</span>
+                        <span style={{ color: m.awayColor }}>{m.awayShort}</span>
+                        {mMinute > 0 && <span className="ml-2">{mMinute}'</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-xs font-black tabular-nums text-foreground">${mPrice.toFixed(4)}</div>
+                    <div className={`font-mono text-[10px] font-bold ${mIsUp ? 'text-accent' : 'text-destructive'}`}>
+                      {mIsUp ? '+' : ''}{mChangePct.toFixed(2)}%
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // Stats bar (shared)
+  const StatsBar = () => {
+    const ms = matchStates[activeMarketId];
+    const isLive = ms?.isRunning;
+    const minute = ms?.minute ?? 0;
+    const currentPrice = activeRuntime.currentPrice;
+    const change = priceChanges[activeMarketId] ?? 0;
+    const changePct = activeMarket.startPrice > 0 ? (change / activeMarket.startPrice * 100) : 0;
+    const isUp = change >= 0;
+    return (
+      <div className="flex items-center gap-4 ml-4 text-[9px]">
+        <div>
+          <div className="text-muted-foreground uppercase tracking-wider">Price</div>
+          <div className="font-mono text-xs font-black tabular-nums text-foreground">${currentPrice.toFixed(4)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground uppercase tracking-wider">Change</div>
+          <div className={`font-mono text-xs font-bold tabular-nums ${isUp ? 'text-accent' : 'text-destructive'}`}>
+            {isUp ? '+' : ''}{changePct.toFixed(2)}%
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground uppercase tracking-wider">Score</div>
+          <div className="font-mono text-xs font-black tabular-nums text-foreground">
+            {activeRuntime.state.homeScore} - {activeRuntime.state.awayScore}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground uppercase tracking-wider">Min</div>
+          <div className="flex items-center gap-1">
+            <span className="font-mono text-xs font-bold tabular-nums text-foreground">{minute}'</span>
+            {isLive && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -280,429 +437,250 @@ export default function Index() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* LEFT: Vertical Contract Selector — only on trade view */}
-        {viewMode === 'trade' && (
-          <div className="w-[140px] shrink-0 border-r border-border bg-card/60 flex flex-col overflow-y-auto custom-scrollbar">
-            <div className="flex-1 px-1.5 py-2 space-y-1">
-              {MARKETS.map(m => {
-                const active = m.id === activeMarketId;
-                const price = prices[m.id] ?? m.startPrice;
-                const change = priceChanges[m.id] ?? 0;
-                const changePct = m.startPrice > 0 ? (change / m.startPrice * 100) : 0;
-                const isUp = change >= 0;
-                const minute = matchMinutes[m.id] ?? 0;
-                const running = isRunningMap[m.id] ?? false;
-
-                return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {viewMode === 'events' ? (
+          /* ─── PAGE 1: EVENT VIEW ─── */
+          <div className="h-full flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="border-b border-border bg-card/90">
+              <div className="px-4 py-2 flex items-center">
+                <ContractDropdown />
+                <StatsBar />
+              </div>
+              <div className="px-4 pb-1 flex items-center gap-1 overflow-x-auto">
+                {([
+                  { key: 'simulation', label: '⚡ Events-Simulation' },
+                  { key: 'feed', label: '📋 Event Feed' },
+                  { key: 'commentary', label: '📺 Commentary' },
+                  { key: 'scores', label: '📊 LiveScore' },
+                  { key: 'possession', label: '⚽ Possession' },
+                ] as { key: EventTab; label: string }[]).map(tab => (
                   <button
-                    key={m.id}
-                    onClick={() => setActiveMarketId(m.id)}
-                    className={`w-full text-left rounded-md px-2 py-2 transition-all active:scale-[0.98] ${
-                      active
-                        ? 'bg-secondary border border-[hsl(var(--gold-muted))]'
-                        : 'bg-transparent hover:bg-secondary/40'
+                    key={tab.key}
+                    onClick={() => setEventTab(tab.key)}
+                    className={`text-[10px] font-semibold px-3 py-1 rounded transition-all whitespace-nowrap ${
+                      eventTab === tab.key
+                        ? 'bg-secondary text-gold border-b-2 border-gold'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[9px] font-bold text-gold truncate">
-                        {m.contract}
-                      </span>
-                      {running && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-                      )}
-                    </div>
-                    <div className="font-mono text-[11px] font-black tabular-nums text-foreground mt-0.5">
-                      ${price.toFixed(2)}
-                    </div>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <span className={`font-mono text-[8px] font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
-                        {isUp ? '▲' : '▼'}{Math.abs(changePct).toFixed(1)}%
-                      </span>
-                      <span className="text-[8px] text-muted-foreground font-mono">
-                        {minute > 0 ? `${minute}'` : '—'}
-                      </span>
-                    </div>
+                    {tab.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
 
-        {/* MAIN CONTENT — instant flip between views */}
-        <div className="flex-1 overflow-hidden">
-          {viewMode === 'events' ? (
-            <EventView
-              activeMarket={activeMarket}
-              activeRuntime={activeRuntime}
-              eventTab={eventTab}
-              setEventTab={setEventTab}
-              allEvents={allEvents}
-              matchStates={matchStates}
-              scoresData={scoresData}
-              activeMarketId={activeMarketId}
-              setActiveMarketId={setActiveMarketId}
-              prices={prices}
-              priceChanges={priceChanges}
-              matchMinutes={matchMinutes}
-              isRunningMap={isRunningMap}
-              contractDropdownOpen={contractDropdownOpen}
-              setContractDropdownOpen={setContractDropdownOpen}
-              runtimes={runtimes}
-            />
-          ) : (
-            <TradeView
-              activeMarket={activeMarket}
-              activeRuntime={activeRuntime}
-              latestEvent={latestEvent}
-              prices={prices}
-              latestEvents={latestEvents}
-              balance={balance}
-              setBalance={setBalance}
-              openTrades={openTrades}
-              setOpenTrades={setOpenTrades}
-              closedTrades={closedTrades}
-              setClosedTrades={setClosedTrades}
-              matchStates={matchStates}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+            {/* VAR banner */}
+            {activeRuntime.state.varActive && (
+              <div className="bg-[hsl(var(--impact-high)/0.12)] border-b border-[hsl(var(--impact-high)/0.4)] px-4 py-2 flex items-center justify-center gap-2">
+                <span className="text-sm">📺</span>
+                <span className="text-[11px] font-bold text-impact-high">VAR REVIEW — PENDA MODE</span>
+                <span className="font-mono text-[10px] text-gold font-bold">{activeRuntime.state.varMinutesLeft}m</span>
+              </div>
+            )}
 
-/* ─── PAGE 1: EVENT VIEW ─── */
-interface EventViewProps {
-  activeMarket: MarketConfig;
-  activeRuntime: MarketRuntime;
-  eventTab: EventTab;
-  setEventTab: (t: EventTab) => void;
-  allEvents: Record<string, MatchEvent[]>;
-  matchStates: Record<string, { isRunning: boolean; minute: number }>;
-  scoresData: {
-    market: MarketConfig;
-    rt: MarketRuntime;
-    goals: number;
-    cards: number;
-    shots: number;
-    lastEv?: MatchEvent;
-  }[];
-  activeMarketId: string;
-  setActiveMarketId: (id: string) => void;
-  prices: Record<string, number>;
-  priceChanges: Record<string, number>;
-  matchMinutes: Record<string, number>;
-  isRunningMap: Record<string, boolean>;
-  contractDropdownOpen: boolean;
-  setContractDropdownOpen: (v: boolean) => void;
-  runtimes: Record<string, MarketRuntime>;
-}
-
-function EventView({
-  activeMarket, activeRuntime, eventTab, setEventTab, allEvents, matchStates,
-  scoresData, activeMarketId, setActiveMarketId, prices, priceChanges, matchMinutes,
-  isRunningMap, contractDropdownOpen, setContractDropdownOpen, runtimes,
-}: EventViewProps) {
-  const ms = matchStates[activeMarketId];
-  const isLive = ms?.isRunning;
-  const minute = ms?.minute ?? 0;
-  const currentPrice = activeRuntime.currentPrice;
-  const change = priceChanges[activeMarketId] ?? 0;
-  const changePct = activeMarket.startPrice > 0 ? (change / activeMarket.startPrice * 100) : 0;
-  const isUp = change >= 0;
-  const totalEvents = activeRuntime.state.events.length;
-  const highImpact = activeRuntime.state.events.filter(e => e.impact === 'high').length;
-
-  return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Hyperliquid-style contract header */}
-      <div className="border-b border-border bg-card/90">
-        {/* Row 1: Contract dropdown + stats */}
-        <div className="px-4 py-2 flex items-center gap-6">
-          {/* Contract dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setContractDropdownOpen(!contractDropdownOpen)}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <span className="text-base font-bold text-foreground tracking-wide">
-                {activeMarket.contract}
-              </span>
-              <svg
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${contractDropdownOpen ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Dropdown panel */}
-            {contractDropdownOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setContractDropdownOpen(false)} />
-                <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[280px] py-1 max-h-[400px] overflow-y-auto">
-                  {MARKETS.map(m => {
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+              {eventTab === 'simulation' && (
+                <EventFeed events={activeRuntime.state.events} />
+              )}
+              {eventTab === 'feed' && (
+                <div className="space-y-0.5">
+                  <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📋 Event Feed Log</h3>
+                  {activeRuntime.state.events.length === 0 && (
+                    <div className="text-center py-6 text-[10px] text-muted-foreground">No events yet — start simulation</div>
+                  )}
+                  {[...activeRuntime.state.events].reverse().map(ev => (
+                    <div key={ev.id} className="flex items-center gap-2 text-[10px] font-mono py-0.5 border-b border-border/30">
+                      <span className="text-muted-foreground w-6 text-right">{ev.minute}'</span>
+                      <span className={`w-3 h-3 rounded-full flex items-center justify-center text-[7px] font-bold text-white ${
+                        ev.team === 'home' ? 'bg-accent' : 'bg-destructive'
+                      }`}>
+                        {ev.team === 'home' ? 'H' : 'A'}
+                      </span>
+                      <span className="text-foreground">{ev.emoji} {ev.type}</span>
+                      <span className={`text-[8px] uppercase font-semibold ${
+                        ev.impact === 'high' ? 'text-impact-high' : ev.impact === 'medium' ? 'text-impact-medium' : 'text-impact-low'
+                      }`}>{ev.impact}</span>
+                      <span className="text-muted-foreground/60 text-[8px] ml-auto">wt: {ev.weight.final.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {eventTab === 'commentary' && (
+                <Commentary
+                  allEvents={allEvents}
+                  markets={MARKETS}
+                  activeMarketId={activeMarketId}
+                  matchStates={matchStates}
+                />
+              )}
+              {eventTab === 'scores' && (
+                <div className="space-y-1.5">
+                  <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📊 Live Scores</h3>
+                  {scoresData.map(({ market: m, rt, goals, cards, shots, lastEv }) => {
                     const active = m.id === activeMarketId;
-                    const mPrice = prices[m.id] ?? m.startPrice;
-                    const mChange = priceChanges[m.id] ?? 0;
-                    const mChangePct = m.startPrice > 0 ? (mChange / m.startPrice * 100) : 0;
-                    const mIsUp = mChange >= 0;
-                    const mMinute = matchMinutes[m.id] ?? 0;
-                    const mRunning = isRunningMap[m.id] ?? false;
-
+                    const pChange = rt.currentPrice - m.startPrice;
+                    const pChangePct = m.startPrice > 0 ? (pChange / m.startPrice * 100) : 0;
+                    const isUp2 = pChange >= 0;
                     return (
                       <button
                         key={m.id}
-                        onClick={() => {
-                          setActiveMarketId(m.id);
-                          setContractDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-2.5 flex items-center justify-between transition-colors ${
-                          active ? 'bg-secondary' : 'hover:bg-secondary/40'
+                        onClick={() => setActiveMarketId(m.id)}
+                        className={`w-full text-left rounded-md p-2 transition-all ${
+                          active ? 'bg-secondary border border-[hsl(var(--gold-muted))]' : 'bg-secondary/30 hover:bg-secondary/60'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          {mRunning && <div className="w-2 h-2 rounded-full bg-accent animate-pulse shrink-0" />}
-                          <div>
-                            <div className="font-mono text-xs font-bold text-foreground">{m.contract}</div>
-                            <div className="text-[9px] text-muted-foreground mt-0.5">
-                              <span style={{ color: m.homeColor }}>{m.homeShort}</span>
-                              <span className="mx-1 text-muted-foreground/40">vs</span>
-                              <span style={{ color: m.awayColor }}>{m.awayShort}</span>
-                              {mMinute > 0 && <span className="ml-2">{mMinute}'</span>}
-                            </div>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            {rt.state.isRunning && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
+                            <span className="font-mono text-[10px] text-gold font-bold">{m.contract}</span>
+                            <span className="text-[9px] text-muted-foreground font-mono">{rt.state.minute}'</span>
+                          </div>
+                          <span className={`font-mono text-[10px] font-bold ${isUp2 ? 'text-accent' : 'text-destructive'}`}>
+                            ${rt.currentPrice.toFixed(4)} {isUp2 ? '▲' : '▼'}{Math.abs(pChangePct).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <span style={{ color: m.homeColor }} className="font-semibold">{m.homeShort}</span>
+                            <span className="font-mono font-black text-foreground">{rt.state.homeScore} - {rt.state.awayScore}</span>
+                            <span style={{ color: m.awayColor }} className="font-semibold">{m.awayShort}</span>
+                          </div>
+                          <div className="flex gap-2 text-[8px] text-muted-foreground">
+                            <span>🎯{shots}</span><span>🟨{cards}</span><span>⚽{goals}</span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-mono text-xs font-black tabular-nums text-foreground">
-                            ${mPrice.toFixed(4)}
+                        {lastEv && (
+                          <div className="text-[8px] text-muted-foreground/70 mt-0.5 truncate">
+                            {lastEv.minute}' — {lastEv.emoji} {lastEv.type} ({lastEv.team === 'home' ? m.homeShort : m.awayShort})
                           </div>
-                          <div className={`font-mono text-[10px] font-bold ${mIsUp ? 'text-accent' : 'text-destructive'}`}>
-                            {mIsUp ? '+' : ''}{mChangePct.toFixed(2)}%
-                          </div>
-                        </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* Stats bar — Hyperliquid style */}
-          <div className="flex items-center gap-6 ml-4">
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Price</div>
-              <div className="font-mono text-sm font-black tabular-nums text-foreground">${currentPrice.toFixed(4)}</div>
-            </div>
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Change</div>
-              <div className={`font-mono text-sm font-bold tabular-nums ${isUp ? 'text-accent' : 'text-destructive'}`}>
-                {isUp ? '+' : ''}{change.toFixed(4)} / {isUp ? '+' : ''}{changePct.toFixed(2)}%
-              </div>
-            </div>
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Score</div>
-              <div className="font-mono text-sm font-black tabular-nums text-foreground">
-                {activeRuntime.state.homeScore} - {activeRuntime.state.awayScore}
-              </div>
-            </div>
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Minute</div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-sm font-bold tabular-nums text-foreground">{minute}'</span>
-                {isLive && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
-              </div>
-            </div>
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Events</div>
-              <div className="font-mono text-sm font-bold tabular-nums text-foreground">{totalEvents}</div>
-            </div>
-            <div>
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">High Impact</div>
-              <div className="font-mono text-sm font-bold tabular-nums text-impact-high">{highImpact}</div>
+              )}
+              {eventTab === 'possession' && (
+                <PossessionView runtimes={runtimes} activeMarketId={activeMarketId} />
+              )}
             </div>
           </div>
-        </div>
+        ) : (
+          /* ─── PAGE 2: TRADE VIEW ─── */
+          <div className="h-full flex flex-col overflow-hidden">
+            {/* Header — same style as event view */}
+            <div className="border-b border-border bg-card/90">
+              <div className="px-4 py-2 flex items-center">
+                <ContractDropdown />
+                <StatsBar />
+              </div>
+            </div>
 
-        {/* Row 2: Tabs */}
-        <div className="px-4 pb-1 flex items-center gap-1">
-          {(['events', 'commentary', 'scores'] as EventTab[]).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setEventTab(tab)}
-              className={`text-[10px] font-semibold px-3 py-1 rounded transition-all capitalize ${
-                eventTab === tab
-                  ? 'bg-secondary text-gold border-b-2 border-gold'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab === 'events' ? '⚡ Event Feed' : tab === 'commentary' ? '📺 Commentary' : '📊 Live Scores'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* VAR banner */}
-      {activeRuntime.state.varActive && (
-        <div className="bg-[hsl(var(--impact-high)/0.12)] border-b border-[hsl(var(--impact-high)/0.4)] px-4 py-2 flex items-center justify-center gap-2">
-          <span className="text-sm">📺</span>
-          <span className="text-[11px] font-bold text-impact-high">VAR REVIEW — PENDA MODE</span>
-          <span className="font-mono text-[10px] text-gold font-bold">{activeRuntime.state.varMinutesLeft}m</span>
-        </div>
-      )}
-
-      {/* Full-width content area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        {eventTab === 'events' && (
-          <EventFeed events={activeRuntime.state.events} />
-        )}
-        {eventTab === 'commentary' && (
-          <Commentary
-            allEvents={allEvents}
-            markets={MARKETS}
-            activeMarketId={activeMarketId}
-            matchStates={matchStates}
-          />
-        )}
-        {eventTab === 'scores' && (
-          <div className="space-y-1.5">
-            <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📊 Live Scores</h3>
-            {scoresData.map(({ market: m, rt, goals, cards, shots, lastEv }) => {
-              const active = m.id === activeMarketId;
-              const pChange = rt.currentPrice - m.startPrice;
-              const pChangePct = m.startPrice > 0 ? (pChange / m.startPrice * 100) : 0;
-              const isUp2 = pChange >= 0;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveMarketId(m.id)}
-                  className={`w-full text-left rounded-md p-2 transition-all ${
-                    active ? 'bg-secondary border border-[hsl(var(--gold-muted))]' : 'bg-secondary/30 hover:bg-secondary/60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      {rt.state.isRunning && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
-                      <span className="font-mono text-[10px] text-gold font-bold">{m.contract}</span>
-                      <span className="text-[9px] text-muted-foreground font-mono">{rt.state.minute}'</span>
-                    </div>
-                    <span className={`font-mono text-[10px] font-bold ${isUp2 ? 'text-accent' : 'text-destructive'}`}>
-                      ${rt.currentPrice.toFixed(4)} {isUp2 ? '▲' : '▼'}{Math.abs(pChangePct).toFixed(1)}%
-                    </span>
+            {/* Main trade layout */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* Chart + Positions (fills height) */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Chart — fills available space */}
+                <div className="flex-1 overflow-hidden p-2">
+                  <div className="h-full">
+                    <PriceChart
+                      priceHistory={activeRuntime.priceHistory}
+                      currentPrice={activeRuntime.currentPrice}
+                      startPrice={activeMarket.startPrice}
+                      contract={activeMarket.contract}
+                      homeTeam={activeMarket.homeTeam}
+                      awayTeam={activeMarket.awayTeam}
+                      homeColor={activeMarket.homeColor}
+                      awayColor={activeMarket.awayColor}
+                    />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-[10px]">
-                      <span style={{ color: m.homeColor }} className="font-semibold">{m.homeShort}</span>
-                      <span className="font-mono font-black text-foreground">{rt.state.homeScore} - {rt.state.awayScore}</span>
-                      <span style={{ color: m.awayColor }} className="font-semibold">{m.awayShort}</span>
-                    </div>
-                    <div className="flex gap-2 text-[8px] text-muted-foreground">
-                      <span>🎯{shots}</span>
-                      <span>🟨{cards}</span>
-                      <span>⚽{goals}</span>
-                    </div>
+                </div>
+
+                {/* Tabbed bottom section */}
+                <div className="border-t border-border bg-card/40 shrink-0" style={{ height: '200px' }}>
+                  <div className="flex items-center gap-0 border-b border-border px-2">
+                    {([
+                      { key: 'positions', label: 'Positions', count: openTrades.length },
+                      { key: 'open-orders', label: 'Open Orders', count: limitOrders.length },
+                      { key: 'trade-history', label: 'Trade History', count: closedTrades.length },
+                      { key: 'order-history', label: 'Order History', count: 0 },
+                    ] as { key: PositionTab; label: string; count: number }[]).map(tab => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setPositionTab(tab.key)}
+                        className={`text-[10px] font-semibold px-3 py-2 transition-all border-b-2 ${
+                          positionTab === tab.key
+                            ? 'text-foreground border-gold'
+                            : 'text-muted-foreground border-transparent hover:text-foreground'
+                        }`}
+                      >
+                        {tab.label}
+                        {tab.count > 0 && (
+                          <span className="ml-1 text-[8px] bg-secondary rounded-full px-1.5 py-0.5">{tab.count}</span>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  {lastEv && (
-                    <div className="text-[8px] text-muted-foreground/70 mt-0.5 truncate">
-                      {lastEv.minute}' — {lastEv.emoji} {lastEv.type} ({lastEv.team === 'home' ? m.homeShort : m.awayShort})
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+                  <div className="overflow-y-auto custom-scrollbar" style={{ height: 'calc(100% - 32px)' }}>
+                    {positionTab === 'positions' && (
+                      <PositionsTable
+                        openTrades={openTrades}
+                        prices={prices}
+                        closeTrade={(trade) => {
+                          const mPrice = prices[trade.marketId] ?? trade.entryPrice;
+                          const priceDiff = mPrice - trade.entryPrice;
+                          const dir = trade.direction === 'long' ? 1 : -1;
+                          const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
+                          const returnAmount = trade.size + pnl;
+                          setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
+                          setOpenTrades(t => t.filter(tr => tr.id !== trade.id));
+                          setClosedTrades(c => [{
+                            id: trade.id, contract: trade.contract, direction: trade.direction,
+                            entryPrice: trade.entryPrice, exitPrice: mPrice,
+                            size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
+                          }, ...c].slice(0, 50));
+                        }}
+                      />
+                    )}
+                    {positionTab === 'open-orders' && (
+                      <OpenOrdersTable limitOrders={limitOrders} cancelOrder={cancelLimitOrder} />
+                    )}
+                    {positionTab === 'trade-history' && (
+                      <TradeHistoryTable closedTrades={closedTrades} />
+                    )}
+                    {positionTab === 'order-history' && (
+                      <div className="text-center py-4 text-[10px] text-muted-foreground">No cancelled orders</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right panel: Trade + OrderBook */}
+              <div className="w-[260px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
+                <TradePanel
+                  activeMarket={activeMarket}
+                  prices={prices}
+                  latestEvents={latestEvents}
+                  balance={balance}
+                  setBalance={setBalance}
+                  openTrades={openTrades}
+                  setOpenTrades={setOpenTrades}
+                  closedTrades={closedTrades}
+                  setClosedTrades={setClosedTrades}
+                  matchStates={matchStates}
+                  onPlaceLimitOrder={(order) => setLimitOrders(prev => [order, ...prev])}
+                />
+                <OrderBook
+                  currentPrice={activeRuntime.currentPrice}
+                  lastEventImpact={latestEvent?.impact}
+                  lastEventDirection={activeRuntime.lastDirection}
+                  contract={activeMarket.contract.split('/')[0]}
+                />
+              </div>
+            </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── PAGE 2: TRADE VIEW ─── */
-interface TradeViewProps {
-  activeMarket: MarketConfig;
-  activeRuntime: MarketRuntime;
-  latestEvent?: MatchEvent;
-  prices: Record<string, number>;
-  latestEvents: Record<string, MatchEvent | undefined>;
-  balance: number;
-  setBalance: (fn: (b: number) => number) => void;
-  openTrades: OpenTrade[];
-  setOpenTrades: React.Dispatch<React.SetStateAction<OpenTrade[]>>;
-  closedTrades: ClosedTrade[];
-  setClosedTrades: React.Dispatch<React.SetStateAction<ClosedTrade[]>>;
-  matchStates: Record<string, { isRunning: boolean; minute: number }>;
-}
-
-function TradeView({
-  activeMarket, activeRuntime, latestEvent, prices, latestEvents,
-  balance, setBalance, openTrades, setOpenTrades, closedTrades, setClosedTrades, matchStates,
-}: TradeViewProps) {
-  return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Chart + Trade/OrderBook side by side */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Chart area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-            <PriceChart
-              priceHistory={activeRuntime.priceHistory}
-              currentPrice={activeRuntime.currentPrice}
-              startPrice={activeMarket.startPrice}
-              contract={activeMarket.contract}
-              homeTeam={activeMarket.homeTeam}
-              awayTeam={activeMarket.awayTeam}
-              homeColor={activeMarket.homeColor}
-              awayColor={activeMarket.awayColor}
-            />
-          </div>
-
-          {/* Open positions below chart */}
-          <div className="border-t border-border p-3 max-h-[200px] overflow-y-auto custom-scrollbar bg-card/40">
-            <PositionsTable
-              openTrades={openTrades}
-              prices={prices}
-              closeTrade={(trade) => {
-                const mPrice = prices[trade.marketId] ?? trade.entryPrice;
-                const priceDiff = mPrice - trade.entryPrice;
-                const dir = trade.direction === 'long' ? 1 : -1;
-                const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
-                const returnAmount = trade.size + pnl;
-                setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
-                setOpenTrades(t => t.filter(tr => tr.id !== trade.id));
-                setClosedTrades(c => [{
-                  id: trade.id, contract: trade.contract, direction: trade.direction,
-                  entryPrice: trade.entryPrice, exitPrice: mPrice,
-                  size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
-                }, ...c].slice(0, 50));
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Right panel: Trade + OrderBook */}
-        <div className="w-[300px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
-          <TradePanel
-            activeMarket={activeMarket}
-            prices={prices}
-            latestEvents={latestEvents}
-            balance={balance}
-            setBalance={setBalance}
-            openTrades={openTrades}
-            setOpenTrades={setOpenTrades}
-            closedTrades={closedTrades}
-            setClosedTrades={setClosedTrades}
-            matchStates={matchStates}
-          />
-          <OrderBook
-            currentPrice={activeRuntime.currentPrice}
-            lastEventImpact={latestEvent?.impact}
-            lastEventDirection={activeRuntime.lastDirection}
-            contract={activeMarket.contract.split('/')[0]}
-          />
-        </div>
       </div>
     </div>
   );
@@ -710,15 +688,13 @@ function TradeView({
 
 /* ─── Positions Table ─── */
 function PositionsTable({
-  openTrades,
-  prices,
-  closeTrade,
+  openTrades, prices, closeTrade,
 }: {
   openTrades: OpenTrade[];
   prices: Record<string, number>;
   closeTrade: (t: OpenTrade) => void;
 }) {
-  const totalUnrealizedPnl = openTrades.reduce((sum, t) => {
+  const totalPnl = openTrades.reduce((sum, t) => {
     const mPrice = prices[t.marketId] ?? t.entryPrice;
     const diff = mPrice - t.entryPrice;
     const dir = t.direction === 'long' ? 1 : -1;
@@ -726,70 +702,236 @@ function PositionsTable({
   }, 0);
 
   if (openTrades.length === 0) {
-    return (
-      <div className="text-center py-3">
-        <span className="text-[10px] text-muted-foreground">No open positions</span>
-      </div>
-    );
+    return <div className="text-center py-4 text-[10px] text-muted-foreground">No open positions</div>;
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-gold font-semibold">Positions ({openTrades.length})</span>
-        <span className={`font-mono text-[10px] font-bold ${totalUnrealizedPnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-          uPnL: {totalUnrealizedPnl >= 0 ? '+' : ''}{totalUnrealizedPnl.toFixed(2)}
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[9px] font-mono">
-          <thead>
-            <tr className="text-muted-foreground uppercase tracking-wider">
-              <th className="text-left py-1 px-1">Contract</th>
-              <th className="text-left py-1 px-1">Side</th>
-              <th className="text-right py-1 px-1">Size</th>
-              <th className="text-right py-1 px-1">Lev</th>
-              <th className="text-right py-1 px-1">Entry</th>
-              <th className="text-right py-1 px-1">Mark</th>
-              <th className="text-right py-1 px-1">PnL</th>
-              <th className="text-right py-1 px-1">Liq</th>
-              <th className="text-right py-1 px-1"></th>
+    <div className="px-2">
+      <table className="w-full text-[9px] font-mono">
+        <thead>
+          <tr className="text-muted-foreground uppercase tracking-wider">
+            <th className="text-left py-1.5 px-1">Contract</th>
+            <th className="text-left py-1.5 px-1">Side</th>
+            <th className="text-right py-1.5 px-1">Size</th>
+            <th className="text-right py-1.5 px-1">Lev</th>
+            <th className="text-right py-1.5 px-1">Entry</th>
+            <th className="text-right py-1.5 px-1">Mark</th>
+            <th className="text-right py-1.5 px-1">uPnL</th>
+            <th className="text-right py-1.5 px-1">Liq</th>
+            <th className="text-center py-1.5 px-1">Mode</th>
+            <th className="text-right py-1.5 px-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {openTrades.map(t => {
+            const mPrice = prices[t.marketId] ?? t.entryPrice;
+            const diff = mPrice - t.entryPrice;
+            const dir = t.direction === 'long' ? 1 : -1;
+            const pnl = (diff / t.entryPrice) * t.size * t.leverage * dir;
+            const pnlPct = (pnl / t.size) * 100;
+            return (
+              <tr key={t.id} className="border-t border-border/30 hover:bg-secondary/30">
+                <td className="py-1 px-1 text-gold">{t.contract}</td>
+                <td className={`py-1 px-1 font-bold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
+                  {t.direction.toUpperCase()}
+                </td>
+                <td className="py-1 px-1 text-right text-foreground">${t.size}</td>
+                <td className="py-1 px-1 text-right text-muted-foreground">{t.leverage}x</td>
+                <td className="py-1 px-1 text-right text-foreground">{t.entryPrice.toFixed(4)}</td>
+                <td className="py-1 px-1 text-right text-foreground">{mPrice.toFixed(4)}</td>
+                <td className={`py-1 px-1 text-right font-bold ${pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                  {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(0)}%)
+                </td>
+                <td className="py-1 px-1 text-right text-muted-foreground">{t.liquidationPrice.toFixed(4)}</td>
+                <td className="py-1 px-1 text-center">
+                  <span className={`text-[7px] uppercase font-bold px-1 py-0.5 rounded ${
+                    t.marginMode === 'cross' ? 'bg-gold/20 text-gold' : 'bg-secondary text-muted-foreground'
+                  }`}>{t.marginMode}</span>
+                </td>
+                <td className="py-1 px-1 text-right">
+                  <button onClick={() => closeTrade(t)}
+                    className="text-[8px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors">
+                    Close
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ─── Open Orders Table ─── */
+function OpenOrdersTable({
+  limitOrders, cancelOrder,
+}: {
+  limitOrders: LimitOrder[];
+  cancelOrder: (id: number) => void;
+}) {
+  if (limitOrders.length === 0) {
+    return <div className="text-center py-4 text-[10px] text-muted-foreground">No open orders</div>;
+  }
+  return (
+    <div className="px-2">
+      <table className="w-full text-[9px] font-mono">
+        <thead>
+          <tr className="text-muted-foreground uppercase tracking-wider">
+            <th className="text-left py-1.5 px-1">Contract</th>
+            <th className="text-left py-1.5 px-1">Side</th>
+            <th className="text-right py-1.5 px-1">Size</th>
+            <th className="text-right py-1.5 px-1">Lev</th>
+            <th className="text-right py-1.5 px-1">Limit Price</th>
+            <th className="text-center py-1.5 px-1">Mode</th>
+            <th className="text-right py-1.5 px-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {limitOrders.map(o => (
+            <tr key={o.id} className="border-t border-border/30 hover:bg-secondary/30">
+              <td className="py-1 px-1 text-gold">{o.contract}</td>
+              <td className={`py-1 px-1 font-bold ${o.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
+                {o.direction.toUpperCase()}
+              </td>
+              <td className="py-1 px-1 text-right text-foreground">${o.size}</td>
+              <td className="py-1 px-1 text-right text-muted-foreground">{o.leverage}x</td>
+              <td className="py-1 px-1 text-right text-foreground">${o.limitPrice.toFixed(4)}</td>
+              <td className="py-1 px-1 text-center">
+                <span className={`text-[7px] uppercase font-bold px-1 py-0.5 rounded ${
+                  o.marginMode === 'cross' ? 'bg-gold/20 text-gold' : 'bg-secondary text-muted-foreground'
+                }`}>{o.marginMode}</span>
+              </td>
+              <td className="py-1 px-1 text-right">
+                <button onClick={() => cancelOrder(o.id)}
+                  className="text-[8px] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded hover:bg-destructive/30 transition-colors">
+                  Cancel
+                </button>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {openTrades.map(t => {
-              const mPrice = prices[t.marketId] ?? t.entryPrice;
-              const diff = mPrice - t.entryPrice;
-              const dir = t.direction === 'long' ? 1 : -1;
-              const pnl = (diff / t.entryPrice) * t.size * t.leverage * dir;
-              const pnlPct = (pnl / t.size) * 100;
-              return (
-                <tr key={t.id} className="border-t border-border/50 hover:bg-secondary/30">
-                  <td className="py-1 px-1 text-gold">{t.contract.split('/')[0]}</td>
-                  <td className={`py-1 px-1 font-bold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
-                    {t.direction.toUpperCase()}
-                  </td>
-                  <td className="py-1 px-1 text-right text-foreground">${t.size}</td>
-                  <td className="py-1 px-1 text-right text-muted-foreground">{t.leverage}x</td>
-                  <td className="py-1 px-1 text-right text-foreground">{t.entryPrice.toFixed(4)}</td>
-                  <td className="py-1 px-1 text-right text-foreground">{mPrice.toFixed(4)}</td>
-                  <td className={`py-1 px-1 text-right font-bold ${pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                    {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(0)}%)
-                  </td>
-                  <td className="py-1 px-1 text-right text-muted-foreground">{t.liquidationPrice.toFixed(4)}</td>
-                  <td className="py-1 px-1 text-right">
-                    <button
-                      onClick={() => closeTrade(t)}
-                      className="text-[8px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors"
-                    >
-                      Close
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ─── Trade History Table ─── */
+function TradeHistoryTable({ closedTrades }: { closedTrades: ClosedTrade[] }) {
+  if (closedTrades.length === 0) {
+    return <div className="text-center py-4 text-[10px] text-muted-foreground">No trade history</div>;
+  }
+  return (
+    <div className="px-2">
+      <table className="w-full text-[9px] font-mono">
+        <thead>
+          <tr className="text-muted-foreground uppercase tracking-wider">
+            <th className="text-left py-1.5 px-1">Contract</th>
+            <th className="text-left py-1.5 px-1">Side</th>
+            <th className="text-right py-1.5 px-1">Size</th>
+            <th className="text-right py-1.5 px-1">Entry</th>
+            <th className="text-right py-1.5 px-1">Exit</th>
+            <th className="text-right py-1.5 px-1">PnL</th>
+            <th className="text-center py-1.5 px-1">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {closedTrades.map(t => (
+            <tr key={`${t.id}-${t.reason}`} className="border-t border-border/30 hover:bg-secondary/30">
+              <td className="py-1 px-1 text-gold">{t.contract}</td>
+              <td className={`py-1 px-1 font-bold ${t.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>
+                {t.direction.toUpperCase()}
+              </td>
+              <td className="py-1 px-1 text-right text-foreground">${t.size}</td>
+              <td className="py-1 px-1 text-right text-foreground">{t.entryPrice.toFixed(4)}</td>
+              <td className="py-1 px-1 text-right text-foreground">{t.exitPrice.toFixed(4)}</td>
+              <td className={`py-1 px-1 text-right font-bold ${t.pnl >= 0 ? 'text-accent' : 'text-destructive'}`}>
+                {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}
+              </td>
+              <td className="py-1 px-1 text-center">
+                <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                  t.reason === 'liquidated' ? 'bg-destructive/20 text-destructive' :
+                  t.reason === 'stop-loss' ? 'bg-destructive/15 text-destructive' :
+                  t.reason === 'take-profit' ? 'bg-accent/15 text-accent' :
+                  t.reason === 'expired' ? 'bg-gold/15 text-gold' :
+                  'bg-secondary text-muted-foreground'
+                }`}>{t.reason}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ─── Possession View ─── */
+function PossessionView({ runtimes, activeMarketId }: { runtimes: Record<string, MarketRuntime>; activeMarketId: string }) {
+  const rt = runtimes[activeMarketId];
+  const market = MARKETS.find(m => m.id === activeMarketId)!;
+  const events = rt.state.events;
+  const homeEvents = events.filter(e => e.team === 'home').length;
+  const awayEvents = events.filter(e => e.team === 'away').length;
+  const total = homeEvents + awayEvents || 1;
+  const homePoss = Math.round((homeEvents / total) * 100);
+  const awayPoss = 100 - homePoss;
+
+  // By event type
+  const eventTypes = ['Pass', 'Shot on Target', 'Cross', 'Tackle', 'Foul', 'Corner Kick', 'Free Kick'];
+  const breakdown = eventTypes.map(type => {
+    const h = events.filter(e => e.team === 'home' && e.type === type).length;
+    const a = events.filter(e => e.team === 'away' && e.type === type).length;
+    return { type, home: h, away: a };
+  }).filter(b => b.home > 0 || b.away > 0);
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">⚽ Possession & Stats</h3>
+
+      {/* Possession bar */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-semibold" style={{ color: market.homeColor }}>{market.homeShort} {homePoss}%</span>
+          <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Possession</span>
+          <span className="text-[10px] font-semibold" style={{ color: market.awayColor }}>{awayPoss}% {market.awayShort}</span>
+        </div>
+        <div className="flex h-2 rounded-full overflow-hidden bg-secondary">
+          <div className="transition-all duration-500" style={{ width: `${homePoss}%`, backgroundColor: market.homeColor }} />
+          <div className="transition-all duration-500" style={{ width: `${awayPoss}%`, backgroundColor: market.awayColor }} />
+        </div>
+      </div>
+
+      {/* Stats breakdown */}
+      <div className="space-y-1.5">
+        {breakdown.map(b => {
+          const bTotal = b.home + b.away || 1;
+          const hPct = Math.round((b.home / bTotal) * 100);
+          return (
+            <div key={b.type}>
+              <div className="flex items-center justify-between text-[9px] font-mono mb-0.5">
+                <span style={{ color: market.homeColor }} className="font-bold">{b.home}</span>
+                <span className="text-muted-foreground uppercase tracking-wider text-[8px]">{b.type}</span>
+                <span style={{ color: market.awayColor }} className="font-bold">{b.away}</span>
+              </div>
+              <div className="flex h-1 rounded-full overflow-hidden bg-secondary">
+                <div className="transition-all duration-500" style={{ width: `${hPct}%`, backgroundColor: market.homeColor }} />
+                <div className="transition-all duration-500" style={{ width: `${100 - hPct}%`, backgroundColor: market.awayColor }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Event totals */}
+      <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className="bg-secondary/40 rounded p-2 text-center">
+          <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Home Events</div>
+          <div className="font-mono text-lg font-black" style={{ color: market.homeColor }}>{homeEvents}</div>
+        </div>
+        <div className="bg-secondary/40 rounded p-2 text-center">
+          <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Away Events</div>
+          <div className="font-mono text-lg font-black" style={{ color: market.awayColor }}>{awayEvents}</div>
+        </div>
       </div>
     </div>
   );
