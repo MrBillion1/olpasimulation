@@ -6,6 +6,7 @@ import {
   MARKETS, pickTeam,
 } from '@/lib/match-engine';
 import EventFeed from '@/components/EventFeed';
+import AnimatedPitch from '@/components/AnimatedPitch';
 import TradePanel, { OpenTrade, ClosedTrade, LimitOrder } from '@/components/TradePanel';
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
@@ -482,17 +483,17 @@ export default function Index() {
               {eventTab === 'live' && (
                 <div className="h-full flex flex-col">
                   <AnimatedPitch
-                    selectedZone={activeRuntime.state.currentZone}
+                    selectedZone={activeRuntime.state.selectedZone}
                     onZoneSelect={() => {}}
                     lastEventZone={activeRuntime.state.events.length > 0 ? activeRuntime.state.events[activeRuntime.state.events.length - 1].zone : undefined}
                     lastEventTeam={activeRuntime.state.events.length > 0 ? activeRuntime.state.events[activeRuntime.state.events.length - 1].team : undefined}
                     isRunning={activeRuntime.state.isRunning}
                     minute={activeRuntime.state.minute}
-                    ballZone={activeRuntime.state.currentZone}
-                    homeTeam={activeMarket.home}
-                    awayTeam={activeMarket.away}
-                    homeColor="hsl(var(--accent))"
-                    awayColor="hsl(var(--destructive))"
+                    ballZone={activeRuntime.state.selectedZone}
+                    homeTeam={activeMarket.homeTeam}
+                    awayTeam={activeMarket.awayTeam}
+                    homeColor={activeMarket.homeColor}
+                    awayColor={activeMarket.awayColor}
                     varActive={activeRuntime.state.varActive}
                   />
                   {/* Live event ticker below pitch */}
