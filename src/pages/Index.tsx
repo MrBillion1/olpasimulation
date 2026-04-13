@@ -37,7 +37,7 @@ function createRuntime(config: MarketConfig): MarketRuntime {
 }
 
 type ViewMode = 'events' | 'trade';
-type EventTab = 'simulation' | 'feed' | 'commentary' | 'scores' | 'possession';
+type EventTab = 'live' | 'simulation' | 'commentary' | 'scores' | 'possession';
 type PositionTab = 'positions' | 'open-orders' | 'trade-history' | 'order-history';
 
 export default function Index() {
