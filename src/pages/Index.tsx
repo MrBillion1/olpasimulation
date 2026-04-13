@@ -43,7 +43,7 @@ type PositionTab = 'positions' | 'open-orders' | 'trade-history' | 'order-histor
 export default function Index() {
   const [activeMarketId, setActiveMarketId] = useState(MARKETS[0].id);
   const [viewMode, setViewMode] = useState<ViewMode>('events');
-  const [eventTab, setEventTab] = useState<EventTab>('simulation');
+  const [eventTab, setEventTab] = useState<EventTab>('live');
   const [positionTab, setPositionTab] = useState<PositionTab>('positions');
   const [runtimes, setRuntimes] = useState<Record<string, MarketRuntime>>(() => {
     const r: Record<string, MarketRuntime> = {};
@@ -447,8 +447,8 @@ export default function Index() {
               </div>
               <div className="px-4 pb-1 flex items-center gap-1 overflow-x-auto">
                 {([
-                  { key: 'simulation', label: '⚡ Events-Simulation' },
-                  { key: 'feed', label: '📋 Event Feed' },
+                  { key: 'live', label: '🟢 Live Simulation' },
+                  { key: 'simulation', label: '⚡ Event-Simulation' },
                   { key: 'commentary', label: '📺 Commentary' },
                   { key: 'scores', label: '📊 LiveScore' },
                   { key: 'possession', label: '⚽ Possession' },
@@ -479,31 +479,43 @@ export default function Index() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+              {eventTab === 'live' && (
+                <div className="h-full flex flex-col">
+                  <AnimatedPitch
+                    selectedZone={activeRuntime.state.currentZone}
+                    onZoneSelect={() => {}}
+                    lastEventZone={activeRuntime.state.events.length > 0 ? activeRuntime.state.events[activeRuntime.state.events.length - 1].zone : undefined}
+                    lastEventTeam={activeRuntime.state.events.length > 0 ? activeRuntime.state.events[activeRuntime.state.events.length - 1].team : undefined}
+                    isRunning={activeRuntime.state.isRunning}
+                    minute={activeRuntime.state.minute}
+                    ballZone={activeRuntime.state.currentZone}
+                    homeTeam={activeMarket.home}
+                    awayTeam={activeMarket.away}
+                    homeColor="hsl(var(--accent))"
+                    awayColor="hsl(var(--destructive))"
+                    varActive={activeRuntime.state.varActive}
+                  />
+                  {/* Live event ticker below pitch */}
+                  <div className="mt-2 space-y-0.5 max-h-32 overflow-y-auto custom-scrollbar">
+                    {[...activeRuntime.state.events].reverse().slice(0, 8).map(ev => (
+                      <div key={ev.id} className="flex items-center gap-2 text-[10px] font-mono py-0.5 border-b border-border/30">
+                        <span className="text-muted-foreground w-6 text-right">{ev.minute}'</span>
+                        <span className={`w-3 h-3 rounded-full flex items-center justify-center text-[7px] font-bold text-white ${
+                          ev.team === 'home' ? 'bg-accent' : 'bg-destructive'
+                        }`}>
+                          {ev.team === 'home' ? 'H' : 'A'}
+                        </span>
+                        <span className="text-foreground">{ev.emoji} {ev.type}</span>
+                        <span className={`text-[8px] uppercase font-semibold ${
+                          ev.impact === 'high' ? 'text-impact-high' : ev.impact === 'medium' ? 'text-impact-medium' : 'text-impact-low'
+                        }`}>{ev.impact}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {eventTab === 'simulation' && (
                 <EventFeed events={activeRuntime.state.events} />
-              )}
-              {eventTab === 'feed' && (
-                <div className="space-y-0.5">
-                  <h3 className="text-xs uppercase tracking-widest text-gold font-semibold mb-2">📋 Event Feed Log</h3>
-                  {activeRuntime.state.events.length === 0 && (
-                    <div className="text-center py-6 text-[10px] text-muted-foreground">No events yet — start simulation</div>
-                  )}
-                  {[...activeRuntime.state.events].reverse().map(ev => (
-                    <div key={ev.id} className="flex items-center gap-2 text-[10px] font-mono py-0.5 border-b border-border/30">
-                      <span className="text-muted-foreground w-6 text-right">{ev.minute}'</span>
-                      <span className={`w-3 h-3 rounded-full flex items-center justify-center text-[7px] font-bold text-white ${
-                        ev.team === 'home' ? 'bg-accent' : 'bg-destructive'
-                      }`}>
-                        {ev.team === 'home' ? 'H' : 'A'}
-                      </span>
-                      <span className="text-foreground">{ev.emoji} {ev.type}</span>
-                      <span className={`text-[8px] uppercase font-semibold ${
-                        ev.impact === 'high' ? 'text-impact-high' : ev.impact === 'medium' ? 'text-impact-medium' : 'text-impact-low'
-                      }`}>{ev.impact}</span>
-                      <span className="text-muted-foreground/60 text-[8px] ml-auto">wt: {ev.weight.final.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
               )}
               {eventTab === 'commentary' && (
                 <Commentary
