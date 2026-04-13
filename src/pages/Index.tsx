@@ -605,11 +605,11 @@ export default function Index() {
               </div>
             </div>
 
-            {/* Main trade layout */}
-            <div className="flex-1 flex overflow-hidden">
-              {/* Chart + Positions (fills height) */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Chart — fills available space */}
+            {/* Main trade layout — chart + right panel on top, tabs full-width at bottom */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Top: Chart + Trade/OrderBook */}
+              <div className="flex-1 flex overflow-hidden min-h-0">
+                {/* Chart — fills remaining space */}
                 <div className="flex-1 overflow-hidden p-2">
                   <div className="h-full">
                     <PriceChart
@@ -625,67 +625,8 @@ export default function Index() {
                   </div>
                 </div>
 
-                {/* Tabbed bottom section */}
-                <div className="border-t border-border bg-card/40 shrink-0" style={{ height: '200px' }}>
-                  <div className="flex items-center gap-0 border-b border-border px-2">
-                    {([
-                      { key: 'positions', label: 'Positions', count: openTrades.length },
-                      { key: 'open-orders', label: 'Open Orders', count: limitOrders.length },
-                      { key: 'trade-history', label: 'Trade History', count: closedTrades.length },
-                      { key: 'order-history', label: 'Order History', count: 0 },
-                    ] as { key: PositionTab; label: string; count: number }[]).map(tab => (
-                      <button
-                        key={tab.key}
-                        onClick={() => setPositionTab(tab.key)}
-                        className={`text-[10px] font-semibold px-3 py-2 transition-all border-b-2 ${
-                          positionTab === tab.key
-                            ? 'text-foreground border-gold'
-                            : 'text-muted-foreground border-transparent hover:text-foreground'
-                        }`}
-                      >
-                        {tab.label}
-                        {tab.count > 0 && (
-                          <span className="ml-1 text-[8px] bg-secondary rounded-full px-1.5 py-0.5">{tab.count}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="overflow-y-auto custom-scrollbar" style={{ height: 'calc(100% - 32px)' }}>
-                    {positionTab === 'positions' && (
-                      <PositionsTable
-                        openTrades={openTrades}
-                        prices={prices}
-                        closeTrade={(trade) => {
-                          const mPrice = prices[trade.marketId] ?? trade.entryPrice;
-                          const priceDiff = mPrice - trade.entryPrice;
-                          const dir = trade.direction === 'long' ? 1 : -1;
-                          const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
-                          const returnAmount = trade.size + pnl;
-                          setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
-                          setOpenTrades(t => t.filter(tr => tr.id !== trade.id));
-                          setClosedTrades(c => [{
-                            id: trade.id, contract: trade.contract, direction: trade.direction,
-                            entryPrice: trade.entryPrice, exitPrice: mPrice,
-                            size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
-                          }, ...c].slice(0, 50));
-                        }}
-                      />
-                    )}
-                    {positionTab === 'open-orders' && (
-                      <OpenOrdersTable limitOrders={limitOrders} cancelOrder={cancelLimitOrder} />
-                    )}
-                    {positionTab === 'trade-history' && (
-                      <TradeHistoryTable closedTrades={closedTrades} />
-                    )}
-                    {positionTab === 'order-history' && (
-                      <div className="text-center py-4 text-[10px] text-muted-foreground">No cancelled orders</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right panel: Trade + OrderBook */}
-              <div className="w-[390px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
+                {/* Right panel: Trade + OrderBook */}
+                <div className="w-[390px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
                 <TradePanel
                   activeMarket={activeMarket}
                   prices={prices}
