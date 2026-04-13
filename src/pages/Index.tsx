@@ -576,6 +576,22 @@ export default function Index() {
               {eventTab === 'possession' && (
                 <PossessionView runtimes={runtimes} activeMarketId={activeMarketId} />
               )}
+              </div>
+              {/* Right: Live Price Chart */}
+              <div className="w-[45%] shrink-0 border-l border-border overflow-hidden p-2">
+                <div className="h-full">
+                  <PriceChart
+                    priceHistory={activeRuntime.priceHistory}
+                    currentPrice={activeRuntime.currentPrice}
+                    startPrice={activeMarket.startPrice}
+                    contract={activeMarket.contract}
+                    homeTeam={activeMarket.homeTeam}
+                    awayTeam={activeMarket.awayTeam}
+                    homeColor={activeMarket.homeColor}
+                    awayColor={activeMarket.awayColor}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -669,7 +685,7 @@ export default function Index() {
               </div>
 
               {/* Right panel: Trade + OrderBook */}
-              <div className="w-[260px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
+              <div className="w-[390px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
                 <TradePanel
                   activeMarket={activeMarket}
                   prices={prices}
