@@ -478,8 +478,9 @@ export default function Index() {
               </div>
             )}
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+            <div className="flex-1 flex overflow-hidden">
+              {/* Left: Event content */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
               {eventTab === 'live' && (
                 <div className="h-full flex flex-col">
                   <AnimatedPitch
