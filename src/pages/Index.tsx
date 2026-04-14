@@ -187,7 +187,7 @@ export default function Index() {
     MARKETS.forEach(m => {
       const rt = runtimes[m.id];
       if (rt.state.isRunning && !rt.state.varActive) {
-        const delay = 600 + Math.random() * 1000;
+        const delay = 400 + Math.random() * 667;
         eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
       }
     });
@@ -371,28 +371,28 @@ export default function Index() {
     const changePct = activeMarket.startPrice > 0 ? (change / activeMarket.startPrice * 100) : 0;
     const isUp = change >= 0;
     return (
-      <div className="flex items-center gap-4 ml-4 text-[9px]">
-        <div>
-          <div className="text-muted-foreground uppercase tracking-wider">Price</div>
-          <div className="font-mono text-xs font-black tabular-nums text-foreground">${currentPrice.toFixed(4)}</div>
+      <div className="flex items-center gap-6 ml-6 text-[10px]">
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="text-muted-foreground uppercase tracking-widest text-[8px]">Price</div>
+          <div className="font-mono text-sm font-black tabular-nums text-foreground">${currentPrice.toFixed(4)}</div>
         </div>
-        <div>
-          <div className="text-muted-foreground uppercase tracking-wider">Change</div>
-          <div className={`font-mono text-xs font-bold tabular-nums ${isUp ? 'text-accent' : 'text-destructive'}`}>
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="text-muted-foreground uppercase tracking-widest text-[8px]">Change</div>
+          <div className={`font-mono text-sm font-bold tabular-nums ${isUp ? 'text-accent' : 'text-destructive'}`}>
             {isUp ? '+' : ''}{changePct.toFixed(2)}%
           </div>
         </div>
-        <div>
-          <div className="text-muted-foreground uppercase tracking-wider">Score</div>
-          <div className="font-mono text-xs font-black tabular-nums text-foreground">
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="text-muted-foreground uppercase tracking-widest text-[8px]">Score</div>
+          <div className="font-mono text-sm font-black tabular-nums text-foreground">
             {activeRuntime.state.homeScore} - {activeRuntime.state.awayScore}
           </div>
         </div>
-        <div>
-          <div className="text-muted-foreground uppercase tracking-wider">Min</div>
-          <div className="flex items-center gap-1">
-            <span className="font-mono text-xs font-bold tabular-nums text-foreground">{minute}'</span>
-            {isLive && <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="text-muted-foreground uppercase tracking-widest text-[8px]">Minutes</div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-sm font-bold tabular-nums text-foreground">{minute}'</span>
+            {isLive && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
           </div>
         </div>
       </div>
@@ -404,7 +404,7 @@ export default function Index() {
       {/* Top bar */}
       <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] font-bold text-gold tracking-wider">OLPA DEX</span>
+          <span className="font-mono text-[11px] font-bold text-gold tracking-wider">ADVANCED MICRO-EVENT SIMULATION <span className="text-muted-foreground">·</span> OLPA DEX</span>
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -649,8 +649,8 @@ export default function Index() {
                 </div>
               </div>
 
-              {/* Full-width bottom tabs — Positions, Open Orders, Trade History, Order History */}
-              <div className="border-t border-border bg-card/40 shrink-0" style={{ height: '180px' }}>
+              {/* Full-width bottom tabs — aligned with orderbook start */}
+              <div className="border-t border-border bg-card/40 flex-1 min-h-[180px]">
                 <div className="flex items-center gap-0 border-b border-border px-2">
                   {([
                     { key: 'positions', label: 'Positions', count: openTrades.length },
