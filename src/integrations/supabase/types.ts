@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      trading_sessions: {
+        Row: {
+          balance: number
+          closed_trades: Json
+          created_at: string
+          id: string
+          ip_address: string
+          limit_orders: Json
+          open_trades: Json
+          session_date: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          closed_trades?: Json
+          created_at?: string
+          id?: string
+          ip_address: string
+          limit_orders?: Json
+          open_trades?: Json
+          session_date?: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          closed_trades?: Json
+          created_at?: string
+          id?: string
+          ip_address?: string
+          limit_orders?: Json
+          open_trades?: Json
+          session_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
