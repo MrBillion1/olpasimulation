@@ -11,6 +11,7 @@ import TradePanel, { OpenTrade, ClosedTrade, LimitOrder } from '@/components/Tra
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
 import OrderBook from '@/components/OrderBook';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PricePoint {
   minute: number;
