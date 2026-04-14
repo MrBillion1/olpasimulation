@@ -79,8 +79,8 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(200, 70%, 55%)', awayColor: 'hsl(0, 68%, 50%)',
     startPrice: 1.85,
     scenario: 'balanced',
-    homePlayers: ['De Bruyne', 'Haaland', 'Foden', 'Bernardo', 'Rodri', 'Walker', 'Stones', 'Dias', 'Grealish', 'Doku', 'Ederson'],
-    awayPlayers: ['Fernandes', 'Rashford', 'Garnacho', 'Mainoo', 'Casemiro', 'Shaw', 'Martínez', 'Varane', 'Mount', 'Højlund', 'Onana'],
+    homePlayers: ['De Bruyne', 'Haaland', 'Foden', 'Bernardo', 'Rodri', 'Gvardiol', 'Stones', 'Dias', 'Grealish', 'Doku', 'Ederson'],
+    awayPlayers: ['Fernandes', 'Höjlund', 'Garnacho', 'Mainoo', 'Ugarte', 'Dalot', 'Martínez', 'De Ligt', 'Mount', 'Amad', 'Onana'],
   },
   {
     id: 'rmabar', contract: 'RMABAR/USDT',
@@ -89,8 +89,8 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(0, 0%, 95%)', awayColor: 'hsl(220, 80%, 45%)',
     startPrice: 2.35,
     scenario: 'home-dominant',
-    homePlayers: ['Bellingham', 'Vinícius Jr', 'Mbappé', 'Valverde', 'Modric', 'Tchouaméni', 'Carvajal', 'Rüdiger', 'Alaba', 'Mendy', 'Courtois'],
-    awayPlayers: ['Pedri', 'Yamal', 'Lewandowski', 'Gavi', 'De Jong', 'Raphinha', 'Araújo', 'Koundé', 'Balde', 'Christensen', 'Ter Stegen'],
+    homePlayers: ['Bellingham', 'Vinícius Jr', 'Mbappé', 'Valverde', 'Modric', 'Tchouaméni', 'Carvajal', 'Rüdiger', 'Militão', 'Mendy', 'Courtois'],
+    awayPlayers: ['Pedri', 'Yamal', 'Lewandowski', 'Gavi', 'De Jong', 'Raphinha', 'Cubarsí', 'Koundé', 'Balde', 'Olmo', 'Ter Stegen'],
   },
   {
     id: 'acmint', contract: 'ACMINT/USDT',
@@ -99,7 +99,7 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(0, 68%, 42%)', awayColor: 'hsl(220, 60%, 40%)',
     startPrice: 1.20,
     scenario: 'away-dominant',
-    homePlayers: ['Leão', 'Giroud', 'Pulisic', 'Reijnders', 'Loftus-Cheek', 'Bennacer', 'Hernández', 'Tomori', 'Thiaw', 'Calabria', 'Maignan'],
+    homePlayers: ['Leão', 'Morata', 'Pulisic', 'Reijnders', 'Loftus-Cheek', 'Fofana', 'Hernández', 'Tomori', 'Thiaw', 'Calabria', 'Maignan'],
     awayPlayers: ['Lautaro', 'Thuram', 'Barella', 'Çalhanoğlu', 'Mkhitaryan', 'Dimarco', 'Bastoni', 'Acerbi', 'Pavard', 'Dumfries', 'Sommer'],
   },
   {
@@ -109,8 +109,8 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(230, 60%, 45%)', awayColor: 'hsl(195, 80%, 50%)',
     startPrice: 1.95,
     scenario: 'chaotic',
-    homePlayers: ['Dembélé', 'Kolo Muani', 'Barcola', 'Vitinha', 'Zaïre-Emery', 'Hakimi', 'Marquinhos', 'Skriniar', 'Nuno Mendes', 'Ugarte', 'Donnarumma'],
-    awayPlayers: ['Aubameyang', 'Ünder', 'Sanchez', 'Guendouzi', 'Rongier', 'Clauss', 'Balerdi', 'Mbemba', 'Murillo', 'Ndiaye', 'Pau López'],
+    homePlayers: ['Dembélé', 'Gonçalo Ramos', 'Barcola', 'Vitinha', 'Zaïre-Emery', 'Hakimi', 'Marquinhos', 'Skriniar', 'Nuno Mendes', 'Ruiz', 'Donnarumma'],
+    awayPlayers: ['Greenwood', 'Wahi', 'Luis Henrique', 'Rabiot', 'Rongier', 'Murillo', 'Balerdi', 'Kondogbia', 'Merlin', 'Harit', 'Rulli'],
   },
   {
     id: 'arstot', contract: 'ARSTOT/USDT',
@@ -119,7 +119,7 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(0, 68%, 48%)', awayColor: 'hsl(0, 0%, 90%)',
     startPrice: 2.10,
     scenario: 'high-press',
-    homePlayers: ['Saka', 'Ødegaard', 'Rice', 'Havertz', 'Saliba', 'Gabriel', 'White', 'Zinchenko', 'Trossard', 'Martinelli', 'Raya'],
+    homePlayers: ['Saka', 'Ødegaard', 'Rice', 'Havertz', 'Saliba', 'Gabriel', 'White', 'Timber', 'Trossard', 'Martinelli', 'Raya'],
     awayPlayers: ['Son', 'Maddison', 'Kulusevski', 'Bissouma', 'Romero', 'Van de Ven', 'Porro', 'Udogie', 'Richarlison', 'Johnson', 'Vicario'],
   },
   {
@@ -129,8 +129,8 @@ export const MARKETS: MarketConfig[] = [
     homeColor: 'hsl(0, 68%, 42%)', awayColor: 'hsl(50, 95%, 50%)',
     startPrice: 0.95,
     scenario: 'tactical',
-    homePlayers: ['Musiala', 'Sané', 'Kane', 'Kimmich', 'Müller', 'Goretzka', 'Davies', 'Upamecano', 'Kim', 'Mazraoui', 'Neuer'],
-    awayPlayers: ['Sancho', 'Adeyemi', 'Füllkrug', 'Brandt', 'Sabitzer', 'Can', 'Ryerson', 'Hummels', 'Schlotterbeck', 'Maatsen', 'Kobel'],
+    homePlayers: ['Musiala', 'Sané', 'Kane', 'Kimmich', 'Müller', 'Goretzka', 'Davies', 'Upamecano', 'Kim', 'Guerreiro', 'Neuer'],
+    awayPlayers: ['Adeyemi', 'Guirassy', 'Brandt', 'Sabitzer', 'Can', 'Groß', 'Ryerson', 'Schlotterbeck', 'Anton', 'Bensebaini', 'Kobel'],
   },
 ];
 
