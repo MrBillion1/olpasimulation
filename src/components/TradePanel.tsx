@@ -77,6 +77,19 @@ export default function TradePanel({
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
 
+  // Live unrealized PnL across all open positions (mark-to-market)
+  const unrealizedPnl = openTrades.reduce((sum, t) => {
+    const mPrice = prices[t.marketId] ?? t.entryPrice;
+    const diff = mPrice - t.entryPrice;
+    const dir = t.direction === 'long' ? 1 : -1;
+    return sum + (diff / t.entryPrice) * t.size * t.leverage * dir;
+  }, 0);
+  // Margin locked into open positions + pending limit orders
+  const usedMargin = openTrades.reduce((s, t) => s + t.size, 0);
+  // Equity = free balance + locked margin + unrealized PnL (real-time, like a derivatives exchange)
+  const equity = balance + usedMargin + unrealizedPnl;
+  const equityIsUp = unrealizedPnl >= 0;
+
   // Sync limit price placeholder when price changes
   useEffect(() => {
     if (!limitPrice) return;
@@ -251,9 +264,19 @@ export default function TradePanel({
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] uppercase tracking-widest text-gold font-semibold">Trade</h3>
-        <span className="font-mono text-[11px] font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
+      <div className="mb-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[10px] uppercase tracking-widest text-gold font-semibold">Trade</h3>
+          <span className={`font-mono text-[11px] font-black tabular-nums ${equityIsUp ? 'text-accent' : 'text-destructive'}`}>
+            ${equity.toFixed(2)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between mt-0.5 text-[8px] font-mono text-muted-foreground">
+          <span>Avail ${balance.toFixed(2)} · Margin ${usedMargin.toFixed(2)}</span>
+          <span className={equityIsUp ? 'text-accent' : 'text-destructive'}>
+            uPnL {equityIsUp ? '+' : ''}{unrealizedPnl.toFixed(2)}
+          </span>
+        </div>
       </div>
 
       {isExpired && (
