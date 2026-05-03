@@ -7,4 +7,4 @@ Features as seen on the olpasimulation website:
 - Annonators-in-price chart to simulte both an enriching and educative all-in-one sports hub.
 - The livescore, commentary, possession, live, and event-simulaiton to showcase a fully packed all-in-one sports hub.
 
-All other core protocol features and mechanics can be found on the main prototye.
+All other core protocol features and mechanics can be found on the main prototype.
