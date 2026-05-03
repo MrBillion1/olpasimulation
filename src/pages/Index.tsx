@@ -697,8 +697,44 @@ export default function Index() {
                   </div>
                 </div>
 
-                {/* Bottom tabs — top edge aligned with OrderBook start in right panel */}
-                <div className="border-t border-border bg-card/40 flex-[2] min-h-[320px] flex flex-col">
+            {/* Main trade layout — left (chart + bottom tabs) + right (Trade/OrderBook full height) */}
+            <div ref={tradeLayoutRef} className="flex-1 flex overflow-hidden min-h-0">
+              {/* Left column: Chart on top, Tabs at bottom */}
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                {/* Chart — fills remaining space */}
+                <div className="flex-1 overflow-hidden p-2 min-h-0">
+                  <div className="h-full">
+                    <PriceChart
+                      priceHistory={activeRuntime.priceHistory}
+                      currentPrice={activeRuntime.currentPrice}
+                      startPrice={activeMarket.startPrice}
+                      contract={activeMarket.contract}
+                      homeTeam={activeMarket.homeTeam}
+                      awayTeam={activeMarket.awayTeam}
+                      homeColor={activeMarket.homeColor}
+                      awayColor={activeMarket.awayColor}
+                    />
+                  </div>
+                </div>
+
+                {/* Drag divider — drag up/down to resize positions panel */}
+                <div
+                  onMouseDown={handleDividerMouseDown}
+                  className="group h-2 shrink-0 cursor-ns-resize bg-border hover:bg-gold/60 transition-colors flex items-center justify-center relative"
+                  title="Drag up or down to resize"
+                >
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-sm bg-card border border-border group-hover:border-gold absolute z-10">
+                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▲</span>
+                    <span className="text-[7px] font-semibold text-muted-foreground group-hover:text-gold uppercase tracking-wider leading-none">Drag</span>
+                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▼</span>
+                  </div>
+                </div>
+
+                {/* Bottom tabs — height controlled by drag divider */}
+                <div
+                  style={{ height: `${bottomPanelHeight}px` }}
+                  className="border-t border-border bg-card/40 shrink-0 flex flex-col"
+                >
                   <div className="flex items-center gap-0 border-b border-border px-2 shrink-0">
                     {([
                       { key: 'positions', label: 'Positions', count: openTrades.length },
