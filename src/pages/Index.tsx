@@ -57,6 +57,28 @@ export default function Index() {
   const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
   const [limitOrders, setLimitOrders] = useState<LimitOrder[]>([]);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(320);
+  const tradeLayoutRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStateRef.current = { startY: e.clientY, startHeight: bottomPanelHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragStateRef.current || !tradeLayoutRef.current) return;
+      const containerH = tradeLayoutRef.current.clientHeight;
+      const delta = dragStateRef.current.startY - ev.clientY;
+      const next = Math.max(60, Math.min(containerH - 80, dragStateRef.current.startHeight + delta));
+      setBottomPanelHeight(next);
+    };
+    const onUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [bottomPanelHeight]);
   const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
 
@@ -656,11 +678,11 @@ export default function Index() {
             </div>
 
             {/* Main trade layout — left (chart + bottom tabs) + right (Trade/OrderBook full height) */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
+            <div ref={tradeLayoutRef} className="flex-1 flex overflow-hidden min-h-0">
               {/* Left column: Chart on top, Tabs at bottom */}
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 {/* Chart — fills remaining space */}
-                <div className="flex-[3] overflow-hidden p-2 min-h-0">
+                <div className="flex-1 overflow-hidden p-2 min-h-0">
                   <div className="h-full">
                     <PriceChart
                       priceHistory={activeRuntime.priceHistory}
@@ -675,8 +697,24 @@ export default function Index() {
                   </div>
                 </div>
 
-                {/* Bottom tabs — top edge aligned with OrderBook start in right panel */}
-                <div className="border-t border-border bg-card/40 flex-[2] min-h-[320px] flex flex-col">
+                {/* Drag divider — drag up/down to resize positions panel */}
+                <div
+                  onMouseDown={handleDividerMouseDown}
+                  className="group h-2 shrink-0 cursor-ns-resize bg-border hover:bg-gold/60 transition-colors flex items-center justify-center relative"
+                  title="Drag up or down to resize"
+                >
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-sm bg-card border border-border group-hover:border-gold absolute z-10">
+                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▲</span>
+                    <span className="text-[7px] font-semibold text-muted-foreground group-hover:text-gold uppercase tracking-wider leading-none">Drag</span>
+                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▼</span>
+                  </div>
+                </div>
+
+                {/* Bottom tabs — height controlled by drag divider */}
+                <div
+                  style={{ height: `${bottomPanelHeight}px` }}
+                  className="border-t border-border bg-card/40 shrink-0 flex flex-col"
+                >
                   <div className="flex items-center gap-0 border-b border-border px-2 shrink-0">
                     {([
                       { key: 'positions', label: 'Positions', count: openTrades.length },
