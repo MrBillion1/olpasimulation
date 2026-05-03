@@ -57,6 +57,28 @@ export default function Index() {
   const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
   const [limitOrders, setLimitOrders] = useState<LimitOrder[]>([]);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(320);
+  const tradeLayoutRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStateRef.current = { startY: e.clientY, startHeight: bottomPanelHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragStateRef.current || !tradeLayoutRef.current) return;
+      const containerH = tradeLayoutRef.current.clientHeight;
+      const delta = dragStateRef.current.startY - ev.clientY;
+      const next = Math.max(60, Math.min(containerH - 80, dragStateRef.current.startHeight + delta));
+      setBottomPanelHeight(next);
+    };
+    const onUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [bottomPanelHeight]);
   const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
 
