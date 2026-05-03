@@ -77,6 +77,19 @@ export default function TradePanel({
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
 
+  // Live unrealized PnL across all open positions (mark-to-market)
+  const unrealizedPnl = openTrades.reduce((sum, t) => {
+    const mPrice = prices[t.marketId] ?? t.entryPrice;
+    const diff = mPrice - t.entryPrice;
+    const dir = t.direction === 'long' ? 1 : -1;
+    return sum + (diff / t.entryPrice) * t.size * t.leverage * dir;
+  }, 0);
+  // Margin locked into open positions + pending limit orders
+  const usedMargin = openTrades.reduce((s, t) => s + t.size, 0);
+  // Equity = free balance + locked margin + unrealized PnL (real-time, like a derivatives exchange)
+  const equity = balance + usedMargin + unrealizedPnl;
+  const equityIsUp = unrealizedPnl >= 0;
+
   // Sync limit price placeholder when price changes
   useEffect(() => {
     if (!limitPrice) return;
