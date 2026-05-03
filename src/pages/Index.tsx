@@ -678,26 +678,6 @@ export default function Index() {
             </div>
 
             {/* Main trade layout — left (chart + bottom tabs) + right (Trade/OrderBook full height) */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
-              {/* Left column: Chart on top, Tabs at bottom */}
-              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                {/* Chart — fills remaining space */}
-                <div className="flex-[3] overflow-hidden p-2 min-h-0">
-                  <div className="h-full">
-                    <PriceChart
-                      priceHistory={activeRuntime.priceHistory}
-                      currentPrice={activeRuntime.currentPrice}
-                      startPrice={activeMarket.startPrice}
-                      contract={activeMarket.contract}
-                      homeTeam={activeMarket.homeTeam}
-                      awayTeam={activeMarket.awayTeam}
-                      homeColor={activeMarket.homeColor}
-                      awayColor={activeMarket.awayColor}
-                    />
-                  </div>
-                </div>
-
-            {/* Main trade layout — left (chart + bottom tabs) + right (Trade/OrderBook full height) */}
             <div ref={tradeLayoutRef} className="flex-1 flex overflow-hidden min-h-0">
               {/* Left column: Chart on top, Tabs at bottom */}
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
