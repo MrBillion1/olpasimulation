@@ -264,9 +264,19 @@ export default function TradePanel({
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] uppercase tracking-widest text-gold font-semibold">Trade</h3>
-        <span className="font-mono text-[11px] font-bold text-gold tabular-nums">${balance.toFixed(2)}</span>
+      <div className="mb-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[10px] uppercase tracking-widest text-gold font-semibold">Trade</h3>
+          <span className={`font-mono text-[11px] font-black tabular-nums ${equityIsUp ? 'text-accent' : 'text-destructive'}`}>
+            ${equity.toFixed(2)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between mt-0.5 text-[8px] font-mono text-muted-foreground">
+          <span>Avail ${balance.toFixed(2)} · Margin ${usedMargin.toFixed(2)}</span>
+          <span className={equityIsUp ? 'text-accent' : 'text-destructive'}>
+            uPnL {equityIsUp ? '+' : ''}{unrealizedPnl.toFixed(2)}
+          </span>
+        </div>
       </div>
 
       {isExpired && (
