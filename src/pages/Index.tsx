@@ -22,16 +22,19 @@ export default function Index() {
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [eventTab, setEventTab] = useState<EventTab>('live');
   const [positionTab, setPositionTab] = useState<PositionTab>('positions');
-  const [runtimes, setRuntimes] = useState<Record<string, MarketRuntime>>(() => {
-    const r: Record<string, MarketRuntime> = {};
-    MARKETS.forEach(m => { r[m.id] = createRuntime(m); });
-    return r;
-  });
 
-  const [balance, setBalance] = useState(10000);
-  const [openTrades, setOpenTrades] = useState<OpenTrade[]>([]);
-  const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
-  const [limitOrders, setLimitOrders] = useState<LimitOrder[]>([]);
+  // Shared simulation store — single source of truth for both Terminal and SCL
+  const runtimes = useStore(s => s.runtimes);
+  const balance = useStore(s => s.balance);
+  const openTrades = useStore(s => s.openTrades);
+  const closedTrades = useStore(s => s.closedTrades);
+  const limitOrders = useStore(s => s.limitOrders);
+  const setBalance = actions.setBalance;
+  const setOpenTrades = actions.setOpenTrades;
+  const setClosedTrades = actions.setClosedTrades;
+  const setLimitOrders = actions.setLimitOrders;
+  const startAll = actions.startAll;
+
   const [bottomPanelHeight, setBottomPanelHeight] = useState(320);
   const tradeLayoutRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -57,11 +60,9 @@ export default function Index() {
   const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
 
-  const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const eventTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load trading state from backend on mount
+  // Load trading state from backend on mount → hydrate the shared store
   useEffect(() => {
     const loadState = async () => {
       try {
@@ -69,10 +70,12 @@ export default function Index() {
           method: 'GET',
         });
         if (!error && data && !data.isNew) {
-          setBalance(data.balance);
-          setOpenTrades(data.openTrades || []);
-          setClosedTrades(data.closedTrades || []);
-          setLimitOrders(data.limitOrders || []);
+          actions.hydrate({
+            balance: data.balance,
+            openTrades: data.openTrades || [],
+            closedTrades: data.closedTrades || [],
+            limitOrders: data.limitOrders || [],
+          });
         }
       } catch (e) {
         console.warn('Failed to load trading session:', e);
@@ -111,144 +114,6 @@ export default function Index() {
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
 
-  // Clock tick
-  useEffect(() => {
-    clockRef.current = setInterval(() => {
-      setRuntimes(prev => {
-        const next = { ...prev };
-        let changed = false;
-        MARKETS.forEach(m => {
-          const rt = next[m.id];
-          if (!rt.state.isRunning) return;
-          if (rt.state.varActive) {
-            if (rt.state.varMinutesLeft <= 1) {
-              next[m.id] = { ...rt, state: { ...rt.state, varActive: false, varMinutesLeft: 0 } };
-            } else {
-              next[m.id] = { ...rt, state: { ...rt.state, varMinutesLeft: rt.state.varMinutesLeft - 1 } };
-            }
-            changed = true;
-            return;
-          }
-          const nextMin = rt.state.minute + 1;
-          if (nextMin > 90) {
-            next[m.id] = { ...rt, state: { ...rt.state, isRunning: false } };
-          } else {
-            next[m.id] = { ...rt, state: { ...rt.state, minute: nextMin, half: nextMin > 45 ? 2 : 1 } };
-          }
-          changed = true;
-        });
-        return changed ? next : prev;
-      });
-    }, 1667);
-    return () => { if (clockRef.current) clearInterval(clockRef.current); };
-  }, []);
-
-  const fireEvent = useCallback((marketId: string, type?: EventType, zone?: ZoneId, sig?: SignificanceType) => {
-    setRuntimes(prev => {
-      const rt = prev[marketId];
-      const market = MARKETS.find(m => m.id === marketId)!;
-      if (!rt || rt.state.varActive) return prev;
-
-      const eventType = type ?? pickRandomEvent(market.scenario, rt.state.minute);
-      const eventZone = zone ?? (rt.state.isRunning ? pickRandomZone() : rt.state.selectedZone);
-      const eventSig = sig ?? pickRandomSignificance(eventType);
-      const weight = calculateWeight(eventType, eventZone, eventSig, rt.state.minute);
-      const team = pickTeam(market.scenario);
-      const meta = EVENT_META[eventType];
-
-      const newCounter = rt.eventCounter + 1;
-      const ev: MatchEvent = {
-        id: `${marketId}-evt-${newCounter}`,
-        type: eventType, zone: eventZone, significance: eventSig,
-        minute: rt.state.minute, weight, team,
-        description: getSignificanceDescription(eventSig, weight.final),
-        impact: meta.impact, emoji: meta.emoji,
-      };
-
-      const momentumDelta = team === 'home' ? weight.final * 0.05 : -weight.final * 0.05;
-      const newMomentum = Math.max(-1, Math.min(1, rt.state.momentum + momentumDelta));
-
-      let homeScore = rt.state.homeScore;
-      let awayScore = rt.state.awayScore;
-      if (eventType === 'Goal') { if (team === 'home') homeScore++; else awayScore++; }
-      if (eventType === 'Own Goal') { if (team === 'home') awayScore++; else homeScore++; }
-      if (eventType === 'Penalty' && Math.random() < weight.final * 0.7) {
-        if (team === 'home') homeScore++; else awayScore++;
-      }
-
-      let varActive = false;
-      let varMinutesLeft = 0;
-      if (meta.impact === 'high' && Math.random() < 0.12) {
-        varActive = true;
-        varMinutesLeft = 2 + Math.floor(Math.random() * 3);
-      }
-
-      const sentiment = getEventSentiment(eventType);
-      const impactMultiplier = meta.impact === 'high' ? 0.08 : meta.impact === 'medium' ? 0.03 : 0.008;
-      const priceMove = weight.final * impactMultiplier * (0.5 + Math.random() * 0.5);
-
-      let direction = 0;
-      if (sentiment === 'positive') {
-        direction = team === 'home' ? 1 : -1;
-      } else if (sentiment === 'negative') {
-        direction = team === 'home' ? -1 : 1;
-      } else {
-        direction = Math.random() > 0.5 ? 0.3 : -0.3;
-      }
-
-      const newPrice = Math.max(0.10, Math.round((rt.currentPrice + priceMove * direction) * 10000) / 10000);
-      const newHistory = [...rt.priceHistory, { minute: rt.state.minute, price: newPrice, event: eventType, team }];
-
-      const events = [...rt.state.events, ev];
-      if (varActive) {
-        const varEv: MatchEvent = {
-          id: `${marketId}-var-${newCounter}`,
-          type: 'VAR Review', zone: eventZone, significance: 'VAR halt — Penda mode active',
-          minute: rt.state.minute,
-          weight: calculateWeight('VAR Review', eventZone, 'VAR halt — Penda mode active', rt.state.minute),
-          team, description: '⏸ Match halted for VAR review — Penda adaptive mode active. All markets frozen.',
-          impact: 'high', emoji: '📺',
-        };
-        events.push(varEv);
-      }
-
-      return {
-        ...prev,
-        [marketId]: {
-          state: {
-            ...rt.state, events, momentum: newMomentum,
-            homeScore, awayScore, selectedZone: eventZone,
-            varActive, varMinutesLeft,
-          },
-          priceHistory: newHistory,
-          currentPrice: newPrice,
-          lastDirection: direction,
-          eventCounter: newCounter,
-        },
-      };
-    });
-  }, []);
-
-  // Auto-play
-  useEffect(() => {
-    MARKETS.forEach(m => {
-      const rt = runtimes[m.id];
-      if (rt.state.isRunning && !rt.state.varActive) {
-        const delay = 400 + Math.random() * 667;
-        eventTimers.current[m.id] = setTimeout(() => fireEvent(m.id), delay);
-      }
-    });
-    return () => {
-      Object.values(eventTimers.current).forEach(t => clearTimeout(t));
-      eventTimers.current = {};
-    };
-  }, [
-    ...MARKETS.map(m => runtimes[m.id]?.state.events.length),
-    ...MARKETS.map(m => runtimes[m.id]?.state.isRunning),
-    ...MARKETS.map(m => runtimes[m.id]?.state.varActive),
-    fireEvent,
-  ]);
-
   const latestEvent = activeRuntime.state.events[activeRuntime.state.events.length - 1];
 
   const prices: Record<string, number> = {};
@@ -266,64 +131,6 @@ export default function Index() {
     latestEvents[m.id] = rt.state.events[rt.state.events.length - 1];
     allEvents[m.id] = rt.state.events;
   });
-
-  // Limit order execution
-  useEffect(() => {
-    if (limitOrders.length === 0) return;
-    setLimitOrders(prev => {
-      const remaining: LimitOrder[] = [];
-      const toExecute: LimitOrder[] = [];
-      prev.forEach(order => {
-        const mPrice = prices[order.marketId];
-        if (!mPrice) { remaining.push(order); return; }
-        const shouldFill = order.direction === 'long'
-          ? mPrice <= order.limitPrice
-          : mPrice >= order.limitPrice;
-        if (shouldFill) {
-          toExecute.push(order);
-        } else {
-          remaining.push(order);
-        }
-      });
-      if (toExecute.length > 0) {
-        toExecute.forEach(order => {
-          const liqPrice = order.direction === 'long'
-            ? Math.round(order.limitPrice * (1 - 1 / order.leverage) * 10000) / 10000
-            : Math.round(order.limitPrice * (1 + 1 / order.leverage) * 10000) / 10000;
-          const trade: OpenTrade = {
-            id: order.id,
-            marketId: order.marketId,
-            contract: order.contract,
-            direction: order.direction,
-            entryPrice: order.limitPrice,
-            size: order.size,
-            leverage: order.leverage,
-            timestamp: Date.now(),
-            minute: runtimes[order.marketId]?.state.minute ?? 0,
-            liquidationPrice: liqPrice,
-            stopLoss: order.stopLoss,
-            takeProfit: order.takeProfit,
-            marginMode: order.marginMode,
-          };
-          setOpenTrades(t => [trade, ...t]);
-        });
-      }
-      return remaining;
-    });
-  }, [prices]);
-
-  const startAll = () => {
-    setRuntimes(prev => {
-      const next = { ...prev };
-      MARKETS.forEach(m => {
-        if (next[m.id].state.minute >= 90) {
-          next[m.id] = createRuntime(m);
-        }
-        next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
-      });
-      return next;
-    });
-  };
 
   const cancelLimitOrder = (orderId: number) => {
     const order = limitOrders.find(o => o.id === orderId);
