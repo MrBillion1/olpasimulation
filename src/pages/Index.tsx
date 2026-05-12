@@ -1,42 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  MatchState, MatchEvent, EventType, ZoneId, SignificanceType, MarketConfig,
-  createInitialState, calculateWeight, pickRandomEvent, pickRandomZone,
-  pickRandomSignificance, getSignificanceDescription, EVENT_META, getEventSentiment,
-  MARKETS, pickTeam,
+  MatchEvent, MARKETS,
 } from '@/lib/match-engine';
 import EventFeed from '@/components/EventFeed';
 import AnimatedPitch from '@/components/AnimatedPitch';
-import TradePanel, { OpenTrade, ClosedTrade, LimitOrder } from '@/components/TradePanel';
+import TradePanel from '@/components/TradePanel';
 import PriceChart from '@/components/PriceChart';
 import Commentary from '@/components/Commentary';
 import OrderBook from '@/components/OrderBook';
 import { supabase } from '@/integrations/supabase/client';
-
-interface PricePoint {
-  minute: number;
-  price: number;
-  event?: string;
-  team?: 'home' | 'away';
-}
-
-interface MarketRuntime {
-  state: MatchState;
-  priceHistory: PricePoint[];
-  currentPrice: number;
-  lastDirection: number;
-  eventCounter: number;
-}
-
-function createRuntime(config: MarketConfig): MarketRuntime {
-  return {
-    state: createInitialState(),
-    priceHistory: [{ minute: 0, price: config.startPrice }],
-    currentPrice: config.startPrice,
-    lastDirection: 0,
-    eventCounter: 0,
-  };
-}
+import { useStore } from '@/hooks/useStore';
+import { actions, OpenTrade, ClosedTrade, LimitOrder, MarketRuntime } from '@/lib/simulation-store';
 
 type ViewMode = 'events' | 'trade';
 type EventTab = 'live' | 'simulation' | 'commentary' | 'scores' | 'possession';
