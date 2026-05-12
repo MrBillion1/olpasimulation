@@ -287,6 +287,13 @@ export default function Index() {
           >
             📊 Trade
           </button>
+          <Link
+            to={`/scl/${activeMarketId}`}
+            className="text-[10px] font-semibold px-3 py-1.5 rounded transition-all bg-secondary text-muted-foreground hover:text-foreground"
+            title="Open the Social Conviction Layer for this contract"
+          >
+            🧠 SCL
+          </Link>
         </div>
       </div>
 
