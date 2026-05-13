@@ -3,7 +3,8 @@ import { actions, SocialPost } from '@/lib/simulation-store';
 import { computeRoiPct } from '@/lib/conviction';
 import { MARKETS } from '@/lib/match-engine';
 import { Link } from 'react-router-dom';
-import { Clock } from 'lucide-react';
+import { Clock, MoreHorizontal, X, Pencil, Trash2, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   post: SocialPost;
@@ -13,6 +14,8 @@ interface Props {
 export default function PostCard({ post, showHubLink = true }: Props) {
   const rt = useStore(s => s.runtimes[post.marketId]);
   const market = MARKETS.find(m => m.id === post.marketId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(post.body);
   if (!rt || !market) return null;
 
   const isLive = rt.state.isRunning;
@@ -79,20 +82,51 @@ export default function PostCard({ post, showHubLink = true }: Props) {
 
       {/* author + body */}
       <div className="px-3 pt-2.5 pb-3">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-start gap-2 mb-2">
           <div className={`w-5 h-5 rounded-sm shrink-0 grid place-items-center text-[8px] font-bold tracking-tighter ${
             post.isNpc ? 'bg-secondary text-muted-foreground' : 'bg-gold/20 text-gold'
           }`}>
             {post.authorName.slice(0, 2).toUpperCase()}
           </div>
-          <div className="min-w-0 flex items-baseline gap-1.5">
+          <div className="min-w-0 flex-1 flex items-baseline gap-1.5">
             <span className="text-[11px] font-semibold text-foreground truncate">{post.authorName}</span>
             <span className="text-[9px] text-muted-foreground font-mono truncate">{post.authorHandle}</span>
             {post.isNpc && <span className="text-[8px] text-muted-foreground/60 font-mono">SIM</span>}
           </div>
+          {post.isSelf && (
+            <PostMenu
+              onEdit={() => { setDraft(post.body); setEditing(true); }}
+              onDelete={() => { if (confirm('Delete this post?')) actions.deletePost(post.id); }}
+            />
+          )}
         </div>
 
-        <p className="text-[13px] leading-snug text-foreground/95 mb-2.5 whitespace-pre-wrap">{post.body}</p>
+        {editing ? (
+          <div className="mb-2.5">
+            <textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              rows={3}
+              className="w-full bg-background border border-border/60 rounded p-2 text-[13px] text-foreground/95 resize-none focus:outline-none focus:border-gold/50"
+            />
+            <div className="flex items-center justify-end gap-1.5 mt-1.5">
+              <button
+                onClick={() => setEditing(false)}
+                className="text-[9px] text-muted-foreground hover:text-foreground uppercase tracking-wider px-2 py-1 rounded hover:bg-secondary/40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { if (draft.trim()) { actions.editPost(post.id, draft.trim()); setEditing(false); } }}
+                className="text-[9px] text-gold uppercase tracking-wider px-2 py-1 rounded bg-gold/10 hover:bg-gold/20 flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" /> Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[13px] leading-snug text-foreground/95 mb-2.5 whitespace-pre-wrap">{post.body}</p>
+        )}
 
         {/* tag chips — hashtag + market ticker */}
         <div className="flex items-center gap-1.5 mb-2 font-mono text-[9px]">
@@ -100,24 +134,26 @@ export default function PostCard({ post, showHubLink = true }: Props) {
           <span className="px-1.5 py-0.5 rounded bg-gold/15 text-gold">{post.contract}</span>
         </div>
 
-        {/* conviction badge */}
+        {/* conviction badge — live ROI synced with current price */}
         {conv && roi !== null && (
           <div className="flex items-center justify-between border border-border/60 rounded px-2 py-1.5 mb-2 bg-secondary/30">
-            <div className="flex items-center gap-2 font-mono text-[10px]">
+            <div className="flex items-center gap-2 font-mono text-[10px] min-w-0 flex-wrap">
               <span className="text-gold font-bold">{conv.contract}</span>
               <span className={`font-bold uppercase ${conv.side === 'long' ? 'text-accent' : 'text-destructive'}`}>{conv.side}</span>
+              <span className="text-muted-foreground">@${conv.entryPrice.toFixed(2)}</span>
               <span className={`font-bold tabular-nums ${roiUp ? 'text-accent' : 'text-destructive'}`}>
-                {roiUp ? '+' : ''}{roi.toFixed(2)}%
+                ROI {roiUp ? '+' : ''}{roi.toFixed(2)}%
               </span>
               {isLive && <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />}
             </div>
             {post.isSelf && (
               <button
                 onClick={() => actions.detachConviction(post.id)}
-                className="text-[8px] text-muted-foreground hover:text-destructive uppercase tracking-wider"
-                title="Removes public visibility only — does not close the position"
+                className="w-5 h-5 shrink-0 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                title="Unlink position from this post (does not close the trade)"
+                aria-label="Detach position"
               >
-                Detach
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -141,6 +177,46 @@ export default function PostCard({ post, showHubLink = true }: Props) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PostMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-6 h-6 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+        aria-label="Post options"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-20 min-w-[120px] bg-popover border border-border rounded-md shadow-lg overflow-hidden">
+          <button
+            onClick={() => { setOpen(false); onEdit(); }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground hover:bg-secondary/60 text-left"
+          >
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+          <button
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-destructive hover:bg-destructive/10 text-left"
+          >
+            <Trash2 className="w-3 h-3" /> Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
