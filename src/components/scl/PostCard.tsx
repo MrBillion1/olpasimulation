@@ -3,7 +3,8 @@ import { actions, SocialPost } from '@/lib/simulation-store';
 import { computeRoiPct } from '@/lib/conviction';
 import { MARKETS } from '@/lib/match-engine';
 import { Link } from 'react-router-dom';
-import { Clock } from 'lucide-react';
+import { Clock, MoreHorizontal, X, Pencil, Trash2, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   post: SocialPost;
