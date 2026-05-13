@@ -180,3 +180,43 @@ export default function PostCard({ post, showHubLink = true }: Props) {
     </div>
   );
 }
+
+function PostMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-6 h-6 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+        aria-label="Post options"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-20 min-w-[120px] bg-popover border border-border rounded-md shadow-lg overflow-hidden">
+          <button
+            onClick={() => { setOpen(false); onEdit(); }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground hover:bg-secondary/60 text-left"
+          >
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+          <button
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-destructive hover:bg-destructive/10 text-left"
+          >
+            <Trash2 className="w-3 h-3" /> Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
