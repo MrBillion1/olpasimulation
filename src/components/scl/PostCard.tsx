@@ -14,6 +14,8 @@ interface Props {
 export default function PostCard({ post, showHubLink = true }: Props) {
   const rt = useStore(s => s.runtimes[post.marketId]);
   const market = MARKETS.find(m => m.id === post.marketId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(post.body);
   if (!rt || !market) return null;
 
   const isLive = rt.state.isRunning;
