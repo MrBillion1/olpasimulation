@@ -186,7 +186,11 @@ export const actions = {
     setState(s => ({ ...s, balance: typeof v === 'function' ? (v as (b: number) => number)(s.balance) : v }));
   },
   setOpenTrades(v: OpenTrade[] | ((t: OpenTrade[]) => OpenTrade[])) {
-    setState(s => ({ ...s, openTrades: typeof v === 'function' ? (v as (t: OpenTrade[]) => OpenTrade[])(s.openTrades) : v }));
+    setState(s => {
+      const next = typeof v === 'function' ? (v as (t: OpenTrade[]) => OpenTrade[])(s.openTrades) : v;
+      if (next === s.openTrades) return s;
+      return { ...s, openTrades: next };
+    });
   },
   setClosedTrades(v: ClosedTrade[] | ((t: ClosedTrade[]) => ClosedTrade[])) {
     setState(s => ({ ...s, closedTrades: typeof v === 'function' ? (v as (t: ClosedTrade[]) => ClosedTrade[])(s.closedTrades) : v }));
