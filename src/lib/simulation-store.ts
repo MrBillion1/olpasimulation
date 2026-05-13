@@ -247,6 +247,18 @@ export const actions = {
       posts: s.posts.map(p => p.id === postId ? { ...p, conviction: undefined } : p),
     }));
   },
+  editPost(postId: string, body: string) {
+    setState(s => ({
+      ...s,
+      posts: s.posts.map(p => p.id === postId && p.isSelf ? { ...p, body } : p),
+    }));
+  },
+  deletePost(postId: string) {
+    setState(s => ({
+      ...s,
+      posts: s.posts.filter(p => !(p.id === postId && p.isSelf)),
+    }));
+  },
   react(postId: string, r: Reaction) {
     setState(s => ({
       ...s,
