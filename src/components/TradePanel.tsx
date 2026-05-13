@@ -184,6 +184,9 @@ export default function TradePanel({
       if (newClosed.length > 0) {
         setClosedTrades(c => [...newClosed, ...c].slice(0, 50));
       }
+      // Preserve reference when nothing changed to avoid render loops
+      // (parent rebuilds `prices` object each render → effect re-fires)
+      if (newClosed.length === 0 && stillOpen.length === prev.length) return prev;
       return stillOpen;
     });
   }, [prices, setOpenTrades, setClosedTrades, setBalance]);
