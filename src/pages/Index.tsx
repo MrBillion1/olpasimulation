@@ -54,6 +54,33 @@ export default function Index() {
   const tradeLayoutRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
+  // Partial-close confirm modal state
+  const [closeRequest, setCloseRequest] = useState<{ trade: OpenTrade; fraction: number } | null>(null);
+
+  const executeClose = (trade: OpenTrade, fraction: number) => {
+    const mPrice = runtimes[trade.marketId]?.currentPrice ?? trade.entryPrice;
+    const f = Math.min(1, Math.max(0.01, fraction));
+    const closedSize = Math.round(trade.size * f * 100) / 100;
+    const remainingSize = Math.round((trade.size - closedSize) * 100) / 100;
+    const priceDiff = mPrice - trade.entryPrice;
+    const dir = trade.direction === 'long' ? 1 : -1;
+    const pnl = Math.round(((priceDiff / trade.entryPrice) * closedSize * trade.leverage * dir) * 100) / 100;
+    const returnAmount = closedSize + pnl;
+    setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
+    if (remainingSize > 0) {
+      setOpenTrades(arr => arr.map(t => t.id === trade.id ? { ...t, size: remainingSize } : t));
+    } else {
+      setOpenTrades(arr => arr.filter(t => t.id !== trade.id));
+    }
+    setClosedTrades(c => [{
+      id: trade.id + Math.floor(Math.random() * 1e6),
+      contract: trade.contract, direction: trade.direction,
+      entryPrice: trade.entryPrice, exitPrice: mPrice,
+      size: closedSize, leverage: trade.leverage, pnl, reason: 'manual' as const,
+    }, ...c].slice(0, 50));
+    setCloseRequest(null);
+  };
+
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragStateRef.current = { startY: e.clientY, startHeight: bottomPanelHeight };
