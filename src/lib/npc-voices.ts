@@ -112,6 +112,8 @@ export function installNpcEngine() {
     MARKETS.forEach(m => {
       const evs = s.runtimes[m.id].state.events;
       const prev = prevCounters[m.id] ?? 0;
+      // Detect runtime reset (auto-restart shrinks events back to 0)
+      if (evs.length < prev) { prevCounters[m.id] = 0; return; }
       if (evs.length > prev) {
         for (let i = prev; i < evs.length; i++) {
           const post = buildPostFromEvent(m.id, evs[i]);
