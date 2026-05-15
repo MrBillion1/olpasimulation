@@ -574,20 +574,7 @@ export default function Index() {
                       <PositionsTable
                         openTrades={openTrades}
                         prices={prices}
-                        closeTrade={(trade) => {
-                          const mPrice = prices[trade.marketId] ?? trade.entryPrice;
-                          const priceDiff = mPrice - trade.entryPrice;
-                          const dir = trade.direction === 'long' ? 1 : -1;
-                          const pnl = Math.round(((priceDiff / trade.entryPrice) * trade.size * trade.leverage * dir) * 100) / 100;
-                          const returnAmount = trade.size + pnl;
-                          setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
-                          setOpenTrades(t => t.filter(tr => tr.id !== trade.id));
-                          setClosedTrades(c => [{
-                            id: trade.id, contract: trade.contract, direction: trade.direction,
-                            entryPrice: trade.entryPrice, exitPrice: mPrice,
-                            size: trade.size, leverage: trade.leverage, pnl, reason: 'manual' as const,
-                          }, ...c].slice(0, 50));
-                        }}
+                        onRequestClose={(trade, fraction) => setCloseRequest({ trade, fraction })}
                       />
                     )}
                     {positionTab === 'open-orders' && (
