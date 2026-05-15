@@ -220,9 +220,10 @@ export const actions = {
         if (next[m.id].state.minute >= 90) next[m.id] = createRuntime(m);
         next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
       });
-      return { ...s, runtimes: next };
+      return { ...s, runtimes: next, autoMode: true };
     });
   },
+  setAutoMode(on: boolean) { setState(s => ({ ...s, autoMode: on })); },
   startMarket(marketId: string) {
     setState(s => {
       const m = MARKETS.find(x => x.id === marketId);
