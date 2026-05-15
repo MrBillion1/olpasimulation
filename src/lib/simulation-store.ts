@@ -139,6 +139,8 @@ interface State {
   posts: SocialPost[];
   // tracks last event index processed per market for npc voice generation
   npcCursors: Record<string, number>;
+  // when true, completed contracts auto-restart for continuous live feed
+  autoMode: boolean;
 }
 
 // ────────── Helpers ──────────
@@ -162,6 +164,7 @@ const initial: State = {
   limitOrders: [],
   posts: [],
   npcCursors: Object.fromEntries(MARKETS.map(m => [m.id, 0])),
+  autoMode: false,
 };
 
 let state: State = initial;
