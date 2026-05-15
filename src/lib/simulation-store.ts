@@ -112,6 +112,8 @@ export interface SocialPost {
   reactions: Record<Reaction, number>;
   // settled accuracy verdict (set when match ends if conviction attached)
   verdict?: 'correct' | 'incorrect' | 'flat';
+  // structural session marker (rendered as a divider, not a normal post)
+  kind?: 'normal' | 'session-end' | 'session-start';
 }
 
 export interface ReputationEntry {
