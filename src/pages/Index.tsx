@@ -616,6 +616,15 @@ export default function Index() {
           </div>
         )}
       </div>
+      {closeRequest && (
+        <CloseConfirmModal
+          trade={closeRequest.trade}
+          fraction={closeRequest.fraction}
+          currentPrice={runtimes[closeRequest.trade.marketId]?.currentPrice ?? closeRequest.trade.entryPrice}
+          onCancel={() => setCloseRequest(null)}
+          onConfirm={() => executeClose(closeRequest.trade, closeRequest.fraction)}
+        />
+      )}
     </div>
   );
 }
