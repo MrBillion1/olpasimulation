@@ -622,19 +622,12 @@ export default function Index() {
 
 /* ─── Positions Table ─── */
 function PositionsTable({
-  openTrades, prices, closeTrade,
+  openTrades, prices, onRequestClose,
 }: {
   openTrades: OpenTrade[];
   prices: Record<string, number>;
-  closeTrade: (t: OpenTrade) => void;
+  onRequestClose: (t: OpenTrade, fraction: number) => void;
 }) {
-  const totalPnl = openTrades.reduce((sum, t) => {
-    const mPrice = prices[t.marketId] ?? t.entryPrice;
-    const diff = mPrice - t.entryPrice;
-    const dir = t.direction === 'long' ? 1 : -1;
-    return sum + ((diff / t.entryPrice) * t.size * t.leverage * dir);
-  }, 0);
-
   if (openTrades.length === 0) {
     return <div className="text-center py-4 text-[10px] text-muted-foreground">No open positions</div>;
   }
@@ -653,7 +646,7 @@ function PositionsTable({
             <th className="text-right py-1.5 px-1">uPnL</th>
             <th className="text-right py-1.5 px-1">Liq</th>
             <th className="text-center py-1.5 px-1">Mode</th>
-            <th className="text-right py-1.5 px-1"></th>
+            <th className="text-center py-1.5 px-1">Close</th>
           </tr>
         </thead>
         <tbody>
@@ -682,17 +675,112 @@ function PositionsTable({
                     t.marginMode === 'cross' ? 'bg-gold/20 text-gold' : 'bg-secondary text-muted-foreground'
                   }`}>{t.marginMode}</span>
                 </td>
-                <td className="py-1 px-1 text-right">
-                  <button onClick={() => closeTrade(t)}
-                    className="text-[8px] bg-muted px-1.5 py-0.5 rounded hover:bg-foreground/20 transition-colors">
-                    Close
-                  </button>
+                <td className="py-1 px-1 text-center">
+                  <div className="inline-flex gap-0.5">
+                    {[0.25, 0.5, 0.75, 1].map(f => (
+                      <button
+                        key={f}
+                        onClick={() => onRequestClose(t, f)}
+                        className={`text-[8px] px-1 py-0.5 rounded transition-colors ${
+                          f === 1
+                            ? 'bg-destructive/20 text-destructive hover:bg-destructive/30 font-bold'
+                            : 'bg-muted text-foreground hover:bg-foreground/20'
+                        }`}
+                        title={`Close ${f * 100}% of this position`}
+                      >
+                        {f === 1 ? '100%' : `${f * 100}%`}
+                      </button>
+                    ))}
+                  </div>
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ─── Close-position confirmation modal ─── */
+function CloseConfirmModal({
+  trade, fraction, currentPrice, onConfirm, onCancel,
+}: {
+  trade: OpenTrade;
+  fraction: number;
+  currentPrice: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const closedSize = Math.round(trade.size * fraction * 100) / 100;
+  const remainingSize = Math.round((trade.size - closedSize) * 100) / 100;
+  const diff = currentPrice - trade.entryPrice;
+  const dir = trade.direction === 'long' ? 1 : -1;
+  const pnl = (diff / trade.entryPrice) * closedSize * trade.leverage * dir;
+  const pnlPct = closedSize > 0 ? (pnl / closedSize) * 100 : 0;
+  const profit = pnl >= 0;
+  return (
+    <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} className="w-full max-w-[420px] bg-card border border-border rounded-lg shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card/90 flex items-center justify-between">
+          <span className="font-mono text-[12px] font-bold text-gold tracking-wider">CONFIRM CLOSE · {Math.round(fraction * 100)}%</span>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+        </div>
+        <div className="p-4 space-y-3 text-[11px] font-mono">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Contract</span>
+            <span className="text-gold font-bold">{trade.contract}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Side</span>
+            <span className={`font-bold ${trade.direction === 'long' ? 'text-accent' : 'text-destructive'}`}>{trade.direction.toUpperCase()}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Leverage / Mode</span>
+            <span className="text-foreground">{trade.leverage}x · <span className="uppercase">{trade.marginMode}</span></span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Entry → Mark</span>
+            <span className="text-foreground tabular-nums">${trade.entryPrice.toFixed(4)} → ${currentPrice.toFixed(4)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Liquidation</span>
+            <span className="text-foreground tabular-nums">${trade.liquidationPrice.toFixed(4)}</span>
+          </div>
+          {(trade.stopLoss != null || trade.takeProfit != null) && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">SL / TP</span>
+              <span className="text-foreground tabular-nums">
+                {trade.stopLoss != null ? `$${trade.stopLoss.toFixed(4)}` : '—'} / {trade.takeProfit != null ? `$${trade.takeProfit.toFixed(4)}` : '—'}
+              </span>
+            </div>
+          )}
+          <div className="border-t border-border pt-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Closing size</span>
+              <span className="text-foreground tabular-nums font-bold">${closedSize.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Remaining size</span>
+              <span className={`tabular-nums ${remainingSize > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>${remainingSize.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Realized PnL</span>
+              <span className={`tabular-nums font-bold ${profit ? 'text-accent' : 'text-destructive'}`}>
+                {profit ? '+' : ''}{pnl.toFixed(2)} ({profit ? '+' : ''}{pnlPct.toFixed(1)}%)
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-t border-border bg-card/40 flex items-center justify-end gap-2">
+          <button onClick={onCancel} className="text-[10px] uppercase tracking-wider px-3 py-1.5 rounded bg-secondary text-muted-foreground hover:text-foreground">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="text-[10px] uppercase tracking-wider font-bold px-4 py-1.5 rounded bg-destructive text-destructive-foreground hover:brightness-110">
+            Close {Math.round(fraction * 100)}%
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
