@@ -18,6 +18,23 @@ export default function PostCard({ post, showHubLink = true }: Props) {
   const [draft, setDraft] = useState(post.body);
   if (!rt || !market) return null;
 
+  // Session marker → render as a divider between sessions, not a normal card
+  if (post.kind === 'session-end' || post.kind === 'session-start') {
+    const isEnd = post.kind === 'session-end';
+    return (
+      <div className="my-2 flex items-center gap-3 px-1" aria-label={post.body}>
+        <span className={`flex-shrink-0 h-6 w-[3px] rounded ${isEnd ? 'bg-destructive/60' : 'bg-accent/70'}`} />
+        <span className={`flex-shrink-0 h-6 w-[3px] rounded ${isEnd ? 'bg-destructive/60' : 'bg-accent/70'}`} />
+        <div className="flex-1 min-w-0">
+          <div className={`text-[8px] font-bold uppercase tracking-widest ${isEnd ? 'text-destructive' : 'text-accent'}`}>
+            {isEnd ? `Session ended · ${post.contract}` : `New session · ${post.contract}`}
+          </div>
+          <div className="text-[10px] text-foreground/80 truncate font-mono">{post.body}</div>
+        </div>
+      </div>
+    );
+  }
+
   const isLive = rt.state.isRunning;
   const isFinal = rt.state.minute >= 90 && !rt.state.isRunning;
   const stateLabel = isFinal ? 'FINAL' : isLive ? 'LIVE' : (rt.state.minute === 0 ? 'PRE-MATCH' : 'HALTED');
@@ -52,11 +69,21 @@ export default function PostCard({ post, showHubLink = true }: Props) {
       <div className="bg-[hsl(20,15%,12%)] px-3 py-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {showHubLink ? (
-            <Link to={`/scl/${post.marketId}`} className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate">
+            <Link
+              to={`/?contract=${post.marketId}&view=trade`}
+              className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
+              title="Open trade UI for this contract"
+            >
               {post.contract}
             </Link>
           ) : (
-            <span className="text-gold font-bold font-mono text-[12px] tracking-wide truncate">{post.contract}</span>
+            <Link
+              to={`/?contract=${post.marketId}&view=trade`}
+              className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
+              title="Open trade UI for this contract"
+            >
+              {post.contract}
+            </Link>
           )}
           <span className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
             isLive

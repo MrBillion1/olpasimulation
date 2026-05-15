@@ -112,6 +112,8 @@ export interface SocialPost {
   reactions: Record<Reaction, number>;
   // settled accuracy verdict (set when match ends if conviction attached)
   verdict?: 'correct' | 'incorrect' | 'flat';
+  // structural session marker (rendered as a divider, not a normal post)
+  kind?: 'normal' | 'session-end' | 'session-start';
 }
 
 export interface ReputationEntry {
@@ -137,6 +139,8 @@ interface State {
   posts: SocialPost[];
   // tracks last event index processed per market for npc voice generation
   npcCursors: Record<string, number>;
+  // when true, completed contracts auto-restart for continuous live feed
+  autoMode: boolean;
 }
 
 // ────────── Helpers ──────────
@@ -160,6 +164,7 @@ const initial: State = {
   limitOrders: [],
   posts: [],
   npcCursors: Object.fromEntries(MARKETS.map(m => [m.id, 0])),
+  autoMode: false,
 };
 
 let state: State = initial;
@@ -215,9 +220,10 @@ export const actions = {
         if (next[m.id].state.minute >= 90) next[m.id] = createRuntime(m);
         next[m.id] = { ...next[m.id], state: { ...next[m.id].state, isRunning: true } };
       });
-      return { ...s, runtimes: next };
+      return { ...s, runtimes: next, autoMode: true };
     });
   },
+  setAutoMode(on: boolean) { setState(s => ({ ...s, autoMode: on })); },
   startMarket(marketId: string) {
     setState(s => {
       const m = MARKETS.find(x => x.id === marketId);
@@ -380,6 +386,7 @@ function fireEventInternal(marketId: string) {
 function tick() {
   setState(s => {
     const next = { ...s.runtimes };
+    const newPosts: SocialPost[] = [];
     let changed = false;
     MARKETS.forEach(m => {
       const rt = next[m.id];
@@ -395,13 +402,42 @@ function tick() {
       }
       const nextMin = rt.state.minute + 1;
       if (nextMin > 90) {
-        next[m.id] = { ...rt, state: { ...rt.state, isRunning: false } };
+        // Session end — emit divider posts; auto-restart if AUTO mode
+        const finalPrice = rt.currentPrice;
+        const score = `${rt.state.homeScore}-${rt.state.awayScore}`;
+        const baseTs = Date.now();
+        newPosts.push({
+          id: `sess-end-${m.id}-${baseTs}`,
+          authorId: 'system', authorName: 'OLPA Sessions', authorHandle: '@sessions',
+          isNpc: true, isSelf: false,
+          marketId: m.id, contract: m.contract,
+          body: `Session closed · ${m.homeShort} ${score} ${m.awayShort} · settle $${finalPrice.toFixed(4)}`,
+          createdAt: baseTs, matchMinuteAtPost: 90, priceAtPost: finalPrice,
+          reactions: { agree: 0, disagree: 0, fade: 0 },
+          kind: 'session-end',
+        });
+        if (s.autoMode) {
+          next[m.id] = { ...createRuntime(m), state: { ...createInitialState(), isRunning: true } };
+          newPosts.push({
+            id: `sess-start-${m.id}-${baseTs + 1}`,
+            authorId: 'system', authorName: 'OLPA Sessions', authorHandle: '@sessions',
+            isNpc: true, isSelf: false,
+            marketId: m.id, contract: m.contract,
+            body: `New 90-min session live · ${m.homeTeam} vs ${m.awayTeam} · open $${m.startPrice.toFixed(4)}`,
+            createdAt: baseTs + 1, matchMinuteAtPost: 0, priceAtPost: m.startPrice,
+            reactions: { agree: 0, disagree: 0, fade: 0 },
+            kind: 'session-start',
+          });
+        } else {
+          next[m.id] = { ...rt, state: { ...rt.state, isRunning: false } };
+        }
       } else {
         next[m.id] = { ...rt, state: { ...rt.state, minute: nextMin, half: nextMin > 45 ? 2 : 1 } };
       }
       changed = true;
     });
-    return changed ? { ...s, runtimes: next } : s;
+    if (!changed && newPosts.length === 0) return s;
+    return { ...s, runtimes: next, posts: newPosts.length > 0 ? [...newPosts.reverse(), ...s.posts].slice(0, 500) : s.posts };
   });
 }
 
