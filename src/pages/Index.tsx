@@ -18,10 +18,25 @@ type EventTab = 'live' | 'simulation' | 'commentary' | 'scores' | 'possession';
 type PositionTab = 'positions' | 'open-orders' | 'trade-history' | 'order-history';
 
 export default function Index() {
-  const [activeMarketId, setActiveMarketId] = useState(MARKETS[0].id);
-  const [viewMode, setViewMode] = useState<ViewMode>('events');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialContract = searchParams.get('contract');
+  const initialView = searchParams.get('view');
+  const [activeMarketId, setActiveMarketId] = useState(
+    initialContract && MARKETS.some(m => m.id === initialContract) ? initialContract : MARKETS[0].id
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView === 'trade' ? 'trade' : 'events');
   const [eventTab, setEventTab] = useState<EventTab>('live');
   const [positionTab, setPositionTab] = useState<PositionTab>('positions');
+
+  // React to deep-link changes (e.g. tapping a ticker on a SCL post)
+  useEffect(() => {
+    const c = searchParams.get('contract');
+    const v = searchParams.get('view');
+    if (c && MARKETS.some(m => m.id === c) && c !== activeMarketId) setActiveMarketId(c);
+    if (v === 'trade' && viewMode !== 'trade') setViewMode('trade');
+    if (v === 'events' && viewMode !== 'events') setViewMode('events');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Shared simulation store — single source of truth for both Terminal and SCL
   const runtimes = useStore(s => s.runtimes);
