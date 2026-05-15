@@ -69,11 +69,11 @@ export default function PostComposer({ defaultMarketId }: Props) {
             <>
               <span className="text-gold font-bold">{targetMarket.contract}</span>
               <span className="text-muted-foreground/70 truncate">
-                {detected?.id === targetMarket.id && body ? 'auto-routed' : 'selected hub'}
+                {detected?.id === targetMarket.id ? 'auto-routed from text' : 'fallback hub'}
               </span>
             </>
           ) : (
-            <span className="text-muted-foreground/70">No contract detected — mention a team or fixture</span>
+            <span className="text-muted-foreground/70">Mention any team — auto-routes to that contract</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
