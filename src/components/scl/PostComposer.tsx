@@ -21,7 +21,9 @@ export default function PostComposer({ defaultMarketId }: Props) {
   const runtimes = useStore(s => s.runtimes);
 
   const detected = useMemo(() => detectContract(body), [body]);
-  const targetMarket = MARKETS.find(m => m.id === (overrideMarketId ?? detected?.id ?? defaultMarketId));
+  // Detected contract from text wins, so users can post about ANY contract without
+  // changing the active hub. Override + defaultMarketId are fallbacks only.
+  const targetMarket = MARKETS.find(m => m.id === (detected?.id ?? overrideMarketId ?? defaultMarketId));
 
   const attachedTrade = openTrades.find(t => t.id === attachedTradeId);
 
