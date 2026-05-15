@@ -69,11 +69,21 @@ export default function PostCard({ post, showHubLink = true }: Props) {
       <div className="bg-[hsl(20,15%,12%)] px-3 py-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {showHubLink ? (
-            <Link to={`/scl/${post.marketId}`} className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate">
+            <Link
+              to={`/?contract=${post.marketId}&view=trade`}
+              className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
+              title="Open trade UI for this contract"
+            >
               {post.contract}
             </Link>
           ) : (
-            <span className="text-gold font-bold font-mono text-[12px] tracking-wide truncate">{post.contract}</span>
+            <Link
+              to={`/?contract=${post.marketId}&view=trade`}
+              className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
+              title="Open trade UI for this contract"
+            >
+              {post.contract}
+            </Link>
           )}
           <span className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
             isLive
