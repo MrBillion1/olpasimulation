@@ -12,11 +12,10 @@ interface Props {
 }
 
 export default function PostCard({ post, showHubLink = true }: Props) {
-  const rt = useStore(s => s.runtimes[post.marketId]);
-  const market = MARKETS.find(m => m.id === post.marketId);
+  const rt = useStore(s => (post.marketId ? s.runtimes[post.marketId] : undefined));
+  const market = post.marketId ? MARKETS.find(m => m.id === post.marketId) : undefined;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(post.body);
-  if (!rt || !market) return null;
 
   // Session marker → render as a divider between sessions, not a normal card
   if (post.kind === 'session-end' || post.kind === 'session-start') {
