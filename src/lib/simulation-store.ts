@@ -101,8 +101,8 @@ export interface SocialPost {
   authorHandle: string;
   isNpc: boolean;
   isSelf: boolean;
-  marketId: string;       // contract hub the post belongs to (auto-routed)
-  contract: string;
+  marketId?: string;      // contract hub (auto-routed from text). Optional: general market posts have none.
+  contract?: string;
   body: string;
   createdAt: number;
   matchMinuteAtPost: number; // for FINAL-state verdicts

@@ -1,89 +1,56 @@
-# Social Conviction Layer (SCL) — Implementation Plan
 
-A protocol-grade, Bloomberg-terminal-style social intelligence layer integrated directly into the existing OLPA simulation. Not a feed — a live, contract-aware, position-attached conviction network synchronized with the match engine, pricing engine, and trading layer.
+# Global Live Conviction Feed
 
-## Scope summary
+Turn the SCL feed into a single market-wide stream. Every hub page shows the same feed; posts auto-map to contracts via text detection; NPCs post about every running contract continuously; composer loses its contract chip.
 
-- New top-level navigation entry **SCL** alongside the existing terminal, plus contract-hub deep links from the trading view.
-- Social state lives in the same shared simulation store as match/pricing/trade state — no parallel mock data.
-- All posts auto-route to a contract hub via keyword/team-name detection.
-- Posts are stateful: pre-match (countdown) ↔ live (clock) ↔ final, driven by the existing match engine.
-- Optional Proof-of-Conviction position attachment with strict 2-stage consent and strict privacy mask.
-- Reputation derives from realized signal quality (accuracy, ROI efficiency, upset hits), not followers.
+---
 
-## Architecture
+## 1. Composer simplification (`src/components/scl/PostComposer.tsx`)
 
-```text
-match-engine ──┬─► pricing-engine ──┬─► TradePanel / OrderBook / Chart
-               │                    │
-               └─► event-bus ───────┴─► social-store ──► SCL UI
-                                            ▲
-                                            │
-                                  Proof-of-Conviction
-                                  (reads live trades + ROI)
-```
+- Remove the `MCIMUN/USDT` (active contract) chip/selector entirely.
+- Keep only: textarea, **Attach Live Position** button, **Post** button.
+- On submit, run the body through `detectContract()` from `src/lib/contract-router.ts`:
+  - If a contract is matched → tag the post with that `contractId` so `PostCard` renders the live ticker/state/price/ROI badge.
+  - If nothing matches → post as a plain market thought (no ticker badge, no price sync). `PostCard` already tolerates a missing contract; we'll confirm the empty-badge path.
+- Attach-position flow unchanged: the attached position itself carries its contract, and the conviction badge still syncs price + ROI live.
 
-- New `src/lib/social-store.ts` (Zustand-style or React context + reducer): posts, hubs, reputation, conviction attachments. Pure derivation from existing engines — no duplicated price/clock state.
-- New `src/lib/contract-router.ts`: regex/alias map (e.g. `el clasico|real madrid|barca|barcelona|madrid` → `RMABAR`) → auto-tag + hub routing.
-- New `src/lib/reputation.ts`: derives scores from closed trades + post outcomes.
-- Extend the existing match engine with a small `subscribe(event)` hook so social posts and ROI can react deterministically.
+## 2. Global feed everywhere (`src/pages/SCLHub.tsx` + `src/pages/SCL.tsx`)
 
-## New components (under `src/components/scl/`)
+- Today `SCLHub` filters posts by the hub's `contractId`. Remove that filter — both pages render the full `posts` array from the store.
+- Hub pages keep their per-contract panels (chart, computed pricing, H2H, AI analysis, order book) on top; the feed below is identical across all hubs and the main `/scl` page.
+- Single shared `<FeedPanel>` component extracted from the current hub layout so both routes render the same list and composer (DRY; ensures parity).
 
-1. `SCLLayout.tsx` — terminal-style 3-pane shell (hub list / feed / hub detail).
-2. `HubList.tsx` — all contracts with live state chip, last price, Δ%, post count.
-3. `HubDetail.tsx` — composes the per-contract terminal:
-   - `HubPriceChart` (reuses `PriceChart`, adds event annotations)
-   - `HubOrderBook` (reuses `OrderBook`, adds CLOB⇄ELP⇄AMM routing badge)
-   - `ComputedPricingPanel` ("Reality repriced the market" log of pricing transitions)
-   - `LiveMatchStatePanel` (score, clock, possession, momentum from existing engine)
-   - `H2HIntelligence` (static-but-deterministic fixture/form data per contract)
-   - `AIAnalysisPanel` (templated institutional summaries derived from live state — no LLM call needed for v1; structured rule-based outputs labeled "Model")
-4. `PostComposer.tsx` — textarea + auto-detected contract chip + "Attach Live Position" toggle.
-5. `ConvictionAttachDialog.tsx` — two-stage modal (disclosure → final confirm). Lists exactly what becomes public vs private.
-6. `PostCard.tsx` — renders contract chip, state (PRE-MATCH countdown / LIVE clock / FINAL), body, optional conviction badge (`CONTRACT • LONG/SHORT • +ROI%` only).
-7. `ConvictionBadge.tsx` — live ROI tick, detach button (owner only).
-8. `ReputationPanel.tsx` — signal-quality metrics (accuracy, ROI efficiency, upset hits, consistency) — no follower count anywhere.
+## 3. Multi-contract NPC stream (`src/lib/simulation-store.ts` + `src/lib/npc-voices.ts`)
 
-## Privacy enforcement
+Current behavior: NPC posts are generated only for whichever runtime is "focused." New behavior:
 
-A single `toPublicConviction(trade)` helper returns ONLY `{ contract, side, roiPct }`. No component may read `size`, `leverage`, `liqPrice`, `margin`, `equity` from a public-conviction object — enforced by TypeScript types (`PublicConviction` is a distinct exported type with no other fields).
+- The store's tick loop already advances **every** market's runtime. Extend the NPC emitter so on each tick, for every running contract, it probabilistically emits an AI post tagged with that contract's id.
+- Each NPC post pulls live state for its own contract (minute, score, last event, current price, momentum) so the body reads correctly even though the user may be looking at a different hub.
+- Throttle per-contract independently (e.g., min 8–15s gap per contract, jittered) so 6 contracts running simultaneously don't flood the feed. Combined with a global cap (e.g., max 1 NPC post per 2s across all contracts) to keep the feed readable.
+- Session-end / session-start divider posts already work per contract — keep as is.
 
-## Post state machine
+## 4. PostCard (`src/components/scl/PostCard.tsx`)
 
-`PostState = derived(post.contract, matchEngine.state(post.contract))`:
-- `PRE_MATCH` → show countdown to kickoff
-- `LIVE` → show match clock, live price, live ROI on attachments
-- `FINAL` → show final score, settled ROI, accuracy verdict (✓/✗) for reputation
+- No structural changes. It already resolves `contractId` → live runtime → price/state/ROI. Just verify it renders cleanly when `contractId` is null (plain post, no badge).
 
-## Visual system
+## 5. Routing/nav
 
-- Stays inside existing dark institutional palette (browns/gold/white/green semantic tokens). No new ad-hoc colors.
-- Mono font for prices/ROI/clocks (already set up). Dense rows, subtle dividers, no shadows-as-glow, no emojis in UI.
-- Status chips: PRE-MATCH (muted), LIVE (accent green pulse — single subtle dot, not flashy), FINAL (muted gold).
+- Hub selector at the top of `/scl/:id` remains as a quick way to switch the *info panels* above the feed. Feed is no longer affected by which hub is active.
 
-## Routing
+---
 
-- New routes: `/scl` (overview), `/scl/:contract` (hub detail). Existing `/` terminal unchanged; add an "Open in SCL" link from the contract header.
+## Technical notes
 
-## Out of scope (v1)
+- `detectContract` is already alias-aware (team names, derby monikers, tickers) — no changes needed.
+- Store actions touched: `addPost` (accept optional `contractId`), `tickNpcPosts` (iterate all runtimes instead of one).
+- No schema/Supabase changes. Pure client/state work.
+- No new dependencies.
 
-- No real-time multi-user backend. Posts are local + optionally persisted to the existing `trading_sessions` IP-keyed row (new `social_posts` JSON column via migration). All "other users" posts are deterministic seeded NPC voices generated from the match engine — labeled clearly as simulated participants in a tooltip on the hub.
-- No DMs, no follows, no likes-as-engagement. Reactions limited to `Agree / Disagree / Fade` which feed reputation only.
+## Out of scope
 
-## Database change
+- Per-user feed filters (e.g., "show only ACMINT") — can be added later as a client-side filter pill row above the feed if you want.
+- Notifications when a post you wrote references a contract whose state changes.
 
-One migration: add `social_posts jsonb default '[]'` to `trading_sessions`. NPC posts stay client-side (deterministic from seed) so they don't bloat storage.
+---
 
-## Build order
-
-1. Add `social_posts` column (migration).
-2. Build `social-store`, `contract-router`, post types, privacy helper.
-3. Build `SCLLayout` + `HubList` + routes.
-4. Build `HubDetail` composing existing chart/orderbook + new panels.
-5. Build `PostComposer` + `PostCard` + state machine.
-6. Build `ConvictionAttachDialog` (2-stage) + `ConvictionBadge` (live ROI).
-7. Build `ReputationPanel` + NPC seed voices reacting to engine events.
-8. Wire nav link from existing terminal → SCL hub for the active contract.
-
-After approval I'll run the migration first, then implement in the order above.
+Confirm and I'll implement.

@@ -107,7 +107,7 @@ export default function SCLHub() {
   const { contract: marketId } = useParams<{ contract: string }>();
   const market = MARKETS.find(m => m.id === marketId);
   const rt = useStore(s => (marketId ? s.runtimes[marketId] : undefined));
-  const posts = useStore(s => s.posts.filter(p => p.marketId === marketId));
+  const posts = useStore(s => s.posts); // global feed — same on every hub
 
   if (!market || !rt) {
     return (
@@ -131,18 +131,18 @@ export default function SCLHub() {
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* LEFT: composer + feed */}
         <aside className="w-[360px] shrink-0 border-r border-border overflow-y-auto custom-scrollbar p-3 space-y-3">
-          <PostComposer key={market.id} defaultMarketId={market.id} />
+          <PostComposer />
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-gold">Live Conviction Feed</span>
-              <span className="text-[9px] text-muted-foreground font-mono">{posts.length} posts</span>
+              <span className="text-[9px] text-muted-foreground font-mono">{posts.length} posts · all markets</span>
             </div>
             {posts.length === 0 && (
               <div className="text-[10px] text-muted-foreground py-6 text-center border border-dashed border-border rounded">
-                No posts in this hub yet. Start the simulation or post a conviction.
+                No posts yet. Start AUTO from /scl to populate analyst voices, or post your take.
               </div>
             )}
-            {posts.map(p => <PostCard key={p.id} post={p} showHubLink={false} />)}
+            {posts.map(p => <PostCard key={p.id} post={p} />)}
           </div>
         </aside>
 
