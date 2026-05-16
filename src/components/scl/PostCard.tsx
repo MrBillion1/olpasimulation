@@ -118,7 +118,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
         <div className="flex items-center gap-2 min-w-0">
           {showHubLink ? (
             <Link
-              to={`/?contract=${post.marketId}&view=trade`}
+              to={`/?contract=${market.id}&view=trade`}
               className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
               title="Open trade UI for this contract"
             >
@@ -126,7 +126,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
             </Link>
           ) : (
             <Link
-              to={`/?contract=${post.marketId}&view=trade`}
+              to={`/?contract=${market.id}&view=trade`}
               className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
               title="Open trade UI for this contract"
             >
