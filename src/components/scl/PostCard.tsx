@@ -94,7 +94,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
   // deterministic pre-match countdown derived from market id
   const preMatchCountdown = (() => {
     if (stateLabel !== 'PRE-MATCH') return null;
-    const seed = post.marketId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const seed = market.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const d = (seed % 14) + 1;
     const h = (seed * 7) % 24;
     return `${d}d ${h.toString().padStart(2, '0')}h`;
@@ -109,7 +109,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   })();
 
-  const tickerSlug = post.contract.split('/')[0];
+  const tickerSlug = market.contract.split('/')[0];
 
   return (
     <div className="border border-border/60 bg-card/40 rounded-lg overflow-hidden hover:border-border transition-colors">
@@ -122,7 +122,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
               className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
               title="Open trade UI for this contract"
             >
-              {post.contract}
+              {market.contract}
             </Link>
           ) : (
             <Link
@@ -130,7 +130,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
               className="text-gold font-bold font-mono text-[12px] tracking-wide hover:underline truncate"
               title="Open trade UI for this contract"
             >
-              {post.contract}
+              {market.contract}
             </Link>
           )}
           <span className={`flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
@@ -206,7 +206,7 @@ export default function PostCard({ post, showHubLink = true }: Props) {
         {/* tag chips — hashtag + market ticker */}
         <div className="flex items-center gap-1.5 mb-2 font-mono text-[9px]">
           <span className="px-1.5 py-0.5 rounded bg-secondary/60 text-muted-foreground">#{tickerSlug}</span>
-          <span className="px-1.5 py-0.5 rounded bg-gold/15 text-gold">{post.contract}</span>
+          <span className="px-1.5 py-0.5 rounded bg-gold/15 text-gold">{market.contract}</span>
         </div>
 
         {/* conviction badge — live ROI synced with current price */}
