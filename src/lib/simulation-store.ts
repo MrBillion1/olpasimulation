@@ -387,6 +387,9 @@ function tick() {
   setState(s => {
     const next = { ...s.runtimes };
     const newPosts: SocialPost[] = [];
+    const expiredClosed: ClosedTrade[] = [];
+    const expiredIds = new Set<number>();
+    let balanceDelta = 0;
     let changed = false;
     MARKETS.forEach(m => {
       const rt = next[m.id];
@@ -402,8 +405,23 @@ function tick() {
       }
       const nextMin = rt.state.minute + 1;
       if (nextMin > 90) {
-        // Session end — emit divider posts; auto-restart if AUTO mode
+        // Session end — settle open trades for this contract at final price
         const finalPrice = rt.currentPrice;
+        s.openTrades.forEach(t => {
+          if (t.marketId !== m.id || expiredIds.has(t.id)) return;
+          const priceDiff = finalPrice - t.entryPrice;
+          const dir = t.direction === 'long' ? 1 : -1;
+          const pnl = Math.round(((priceDiff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
+          const returnAmount = Math.max(0, t.size + pnl);
+          balanceDelta += returnAmount;
+          expiredIds.add(t.id);
+          expiredClosed.push({
+            id: t.id, contract: t.contract, direction: t.direction,
+            entryPrice: t.entryPrice, exitPrice: finalPrice,
+            size: t.size, leverage: t.leverage, pnl, reason: 'expired',
+          });
+        });
+
         const score = `${rt.state.homeScore}-${rt.state.awayScore}`;
         const baseTs = Date.now();
         newPosts.push({
@@ -436,8 +454,17 @@ function tick() {
       }
       changed = true;
     });
-    if (!changed && newPosts.length === 0) return s;
-    return { ...s, runtimes: next, posts: newPosts.length > 0 ? [...newPosts.reverse(), ...s.posts].slice(0, 500) : s.posts };
+    if (!changed && newPosts.length === 0 && expiredIds.size === 0) return s;
+    return {
+      ...s,
+      runtimes: next,
+      posts: newPosts.length > 0 ? [...newPosts.reverse(), ...s.posts].slice(0, 500) : s.posts,
+      openTrades: expiredIds.size > 0 ? s.openTrades.filter(t => !expiredIds.has(t.id)) : s.openTrades,
+      closedTrades: expiredClosed.length > 0 ? [...expiredClosed, ...s.closedTrades].slice(0, 50) : s.closedTrades,
+      balance: balanceDelta !== 0 ? Math.round((s.balance + balanceDelta) * 100) / 100 : s.balance,
+      // Also drop pending limit orders for restarted contracts so they don't fill on a new session.
+      limitOrders: s.autoMode ? s.limitOrders.filter(o => next[o.marketId]?.state.minute !== 0 || s.runtimes[o.marketId]?.state.minute < 90) : s.limitOrders,
+    };
   });
 }
 
