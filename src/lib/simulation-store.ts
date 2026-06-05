@@ -462,7 +462,7 @@ function tick() {
       openTrades: expiredIds.size > 0 ? s.openTrades.filter(t => !expiredIds.has(t.id)) : s.openTrades,
       closedTrades: expiredClosed.length > 0 ? [...expiredClosed, ...s.closedTrades].slice(0, 50) : s.closedTrades,
       balance: balanceDelta !== 0 ? Math.round((s.balance + balanceDelta) * 100) / 100 : s.balance,
-      // Also drop pending limit orders for restarted contracts so they don't fill on a new session.
+      
     };
   });
 }
