@@ -8,6 +8,10 @@ const H2H: Record<string, { last5: string; homeForm: string; awayForm: string; t
   psgmar:  { last5: 'W-D-W-W-L', homeForm: 'W-W-W-D-W', awayForm: 'L-W-D-L-W', tactical: 'Le Classique typically chaotic — high foul/card incidence.', analog: 'Closest analog: Le Classique 2023-09 (vol regime: chaotic).' },
   arstot:  { last5: 'W-W-D-L-W', homeForm: 'W-D-W-W-W', awayForm: 'W-L-W-D-W', tactical: 'Arsenal pressing triggers vs Spurs counter-geometry.', analog: 'Closest analog: NLD 2024-04 (vol regime: high).' },
   fcbbvb:  { last5: 'W-W-D-W-L', homeForm: 'W-W-D-W-W', awayForm: 'D-W-L-W-W', tactical: 'Klassiker — Bayern positional dominance vs BVB transition speed.', analog: 'Closest analog: Klassiker 2024-11 (vol regime: medium).' },
+  juvnap:  { last5: 'D-W-W-L-D', homeForm: 'W-D-W-W-D', awayForm: 'W-W-D-W-L', tactical: 'Juve compact block vs Napoli width — set-piece battle decides.', analog: 'Closest analog: 2023-01 fixture (vol regime: medium).' },
+  avlnwc:  { last5: 'W-L-W-D-W', homeForm: 'W-W-D-W-L', awayForm: 'W-D-L-W-W', tactical: 'Villa high line vs Newcastle direct verticals — pace exploitable.', analog: 'Closest analog: 2024-02 fixture (vol regime: medium-high).' },
+  atmvil:  { last5: 'W-D-W-W-L', homeForm: 'W-W-W-D-W', awayForm: 'L-W-D-W-W', tactical: 'Atleti low block vs Villarreal positional rotations.', analog: 'Closest analog: 2024-05 fixture (vol regime: medium).' },
+  porbra:  { last5: 'W-W-L-W-D', homeForm: 'W-W-W-D-W', awayForm: 'W-L-W-D-W', tactical: 'Portuguese clássico — Porto control vs Braga transitions.', analog: 'Closest analog: 2024-03 fixture (vol regime: medium).' },
 };
 
 export default function H2HIntelligence({ marketId }: { marketId: string }) {
