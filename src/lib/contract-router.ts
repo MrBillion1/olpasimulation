@@ -17,6 +17,10 @@ const ALIASES: Record<string, string[]> = {
   psgmar:  ['psgmar', 'psg', 'paris', 'paris saint-germain', 'paris sg', 'marseille', 'om', 'mar', 'le classique', 'le classico'],
   arstot:  ['arstot', 'arsenal', 'ars', 'gunners', 'tottenham', 'spurs', 'tot', 'thfc', 'north london derby'],
   fcbbvb:  ['fcbbvb', 'bayern', 'bayern munich', 'fc bayern', 'fcb', 'dortmund', 'bvb', 'borussia dortmund', 'der klassiker', 'klassiker'],
+  juvnap:  ['juvnap', 'juventus', 'juve', 'juv', 'bianconeri', 'napoli', 'nap', 'partenopei', 'derby d\'italia'],
+  avlnwc:  ['avlnwc', 'aston villa', 'villa', 'avl', 'avfc', 'newcastle', 'nufc', 'nwc', 'magpies', 'toon'],
+  atmvil:  ['atmvil', 'atletico', 'atlético', 'atletico madrid', 'atm', 'colchoneros', 'villarreal', 'vil', 'yellow submarine'],
+  porbra:  ['porbra', 'porto', 'fc porto', 'por', 'dragões', 'braga', 'bra', 'sc braga', 'arsenalistas'],
 };
 
 const RULES: AliasRule[] = MARKETS.map(m => ({
