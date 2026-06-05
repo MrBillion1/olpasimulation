@@ -463,7 +463,6 @@ function tick() {
       closedTrades: expiredClosed.length > 0 ? [...expiredClosed, ...s.closedTrades].slice(0, 50) : s.closedTrades,
       balance: balanceDelta !== 0 ? Math.round((s.balance + balanceDelta) * 100) / 100 : s.balance,
       // Also drop pending limit orders for restarted contracts so they don't fill on a new session.
-      limitOrders: s.autoMode ? s.limitOrders.filter(o => next[o.marketId]?.state.minute !== 0 || s.runtimes[o.marketId]?.state.minute < 90) : s.limitOrders,
     };
   });
 }
