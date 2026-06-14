@@ -10,6 +10,7 @@ import SCL from "./pages/SCL.tsx";
 import SCLHub from "./pages/SCLHub.tsx";
 import { startEngine } from "@/lib/simulation-store";
 import { installNpcEngine, seedInitialPosts } from "@/lib/npc-voices";
+import { loadPersistedState, installAutoSave } from "@/lib/persistence";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +19,8 @@ function Bootstrap() {
     startEngine();
     installNpcEngine();
     seedInitialPosts();
+    installAutoSave();
+    loadPersistedState();
   }, []);
   return null;
 }
