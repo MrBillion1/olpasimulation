@@ -127,9 +127,9 @@ export default function SCLHub() {
           <Link
             to="/scl"
             title="Back to Conviction Feed"
-            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-gold px-2 py-1 rounded border border-border hover:border-gold/40 transition-colors"
+            className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gold px-3 py-1.5 rounded border border-gold/50 bg-gold/10 hover:bg-gold/20 hover:border-gold transition-colors"
           >
-            <ArrowLeft className="w-3 h-3" /> Back
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
           </Link>
           <span className="font-mono text-[11px] font-bold text-gold tracking-wider truncate">
             SOCIAL CONVICTION LAYER <span className="text-muted-foreground">·</span> {market.contract}
