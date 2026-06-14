@@ -100,58 +100,9 @@ export default function Index() {
     window.addEventListener('mouseup', onUp);
   }, [bottomPanelHeight]);
   const [contractDropdownOpen, setContractDropdownOpen] = useState(false);
-  const [stateLoaded, setStateLoaded] = useState(false);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Load trading state from backend on mount → hydrate the shared store
-  useEffect(() => {
-    const loadState = async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('trading-session', {
-          method: 'GET',
-        });
-        if (!error && data && !data.isNew) {
-          actions.hydrate({
-            balance: data.balance,
-            openTrades: data.openTrades || [],
-            closedTrades: data.closedTrades || [],
-            limitOrders: data.limitOrders || [],
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to load trading session:', e);
-      }
-      setStateLoaded(true);
-    };
-    loadState();
-  }, []);
-
-  // Save trading state to backend (debounced)
-  const saveState = useCallback((bal: number, open: OpenTrade[], closed: ClosedTrade[], limits: LimitOrder[]) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await supabase.functions.invoke('trading-session', {
-          method: 'POST',
-          body: {
-            balance: bal,
-            openTrades: open,
-            closedTrades: closed,
-            limitOrders: limits,
-          },
-        });
-      } catch (e) {
-        console.warn('Failed to save trading session:', e);
-      }
-    }, 1000);
-  }, []);
-
-  // Trigger save whenever trading state changes
-  useEffect(() => {
-    if (!stateLoaded) return;
-    saveState(balance, openTrades, closedTrades, limitOrders);
-  }, [balance, openTrades, closedTrades, limitOrders, stateLoaded, saveState]);
+  // Trading-session persistence is handled globally in App's Bootstrap so
+  // it keeps running across page navigations (Index ↔ SCL). No-op here.
 
   const activeMarket = MARKETS.find(m => m.id === activeMarketId)!;
   const activeRuntime = runtimes[activeMarketId];
