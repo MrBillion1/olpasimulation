@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ArrowLeft } from 'lucide-react';
+
 import { useStore } from '@/hooks/useStore';
 import { MARKETS } from '@/lib/match-engine';
 import PostComposer from '@/components/scl/PostComposer';
@@ -121,12 +122,22 @@ export default function SCLHub() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* top bar */}
-      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
-        <span className="font-mono text-[11px] font-bold text-gold tracking-wider">
-          SOCIAL CONVICTION LAYER <span className="text-muted-foreground">·</span> {market.contract}
-        </span>
+      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Link
+            to="/scl"
+            title="Back to Conviction Feed"
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-gold px-2 py-1 rounded border border-border hover:border-gold/40 transition-colors"
+          >
+            <ArrowLeft className="w-3 h-3" /> Back
+          </Link>
+          <span className="font-mono text-[11px] font-bold text-gold tracking-wider truncate">
+            SOCIAL CONVICTION LAYER <span className="text-muted-foreground">·</span> {market.contract}
+          </span>
+        </div>
         <SCLNav />
       </div>
+
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* LEFT: composer + feed */}
