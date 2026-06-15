@@ -635,29 +635,46 @@ function PositionsTable({
                     t.marginMode === 'cross' ? 'bg-gold/20 text-gold' : 'bg-secondary text-muted-foreground'
                   }`}>{t.marginMode}</span>
                 </td>
-                <td className="py-1 px-1 text-center">
-                  <div className="inline-flex gap-0.5">
-                    {[0.25, 0.5, 0.75, 1].map(f => (
-                      <button
-                        key={f}
-                        onClick={() => onRequestClose(t, f)}
-                        className={`text-[8px] px-1 py-0.5 rounded transition-colors ${
-                          f === 1
-                            ? 'bg-destructive/20 text-destructive hover:bg-destructive/30 font-bold'
-                            : 'bg-muted text-foreground hover:bg-foreground/20'
-                        }`}
-                        title={`Close ${f * 100}% of this position`}
-                      >
-                        {f === 1 ? '100%' : `${f * 100}%`}
-                      </button>
-                    ))}
-                  </div>
+                <td className="py-1 px-1 text-center min-w-[150px]">
+                  <CloseSizeControl trade={t} onRequestClose={onRequestClose} />
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function CloseSizeControl({
+  trade, onRequestClose,
+}: {
+  trade: OpenTrade;
+  onRequestClose: (t: OpenTrade, fraction: number) => void;
+}) {
+  const [pct, setPct] = useState(100);
+  return (
+    <div className="flex items-center gap-1.5 w-[150px]">
+      <div className="relative flex-1 h-5 flex items-center">
+        <input
+          type="range"
+          min={1}
+          max={100}
+          step={1}
+          value={pct}
+          onChange={e => setPct(Number(e.target.value))}
+          className="w-full h-1 accent-[hsl(var(--destructive))] cursor-ew-resize"
+          title={`Close ${pct}% of this position`}
+        />
+      </div>
+      <button
+        onClick={() => onRequestClose(trade, pct / 100)}
+        className="h-6 min-w-10 px-1.5 rounded bg-destructive/20 text-destructive hover:bg-destructive/30 font-bold text-[8px] transition-colors tabular-nums"
+        title={`Close ${pct}% of this position`}
+      >
+        {pct}% →
+      </button>
     </div>
   );
 }
