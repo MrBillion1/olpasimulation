@@ -539,7 +539,7 @@ subscribe(() => {
         return {
           id: o.id, marketId: o.marketId, contract: o.contract, direction: o.direction,
           entryPrice: o.limitPrice, size: o.size, leverage: o.leverage,
-          timestamp: Date.now(), minute: s.runtimes[o.marketId]?.state.minute ?? 0,
+          timestamp: Date.now(), minute: s.runtimes[o.marketId]?.state.minute ?? 0, sessionEndsAt: o.sessionEndsAt,
           liquidationPrice: liq, stopLoss: o.stopLoss, takeProfit: o.takeProfit, marginMode: o.marginMode,
         };
       });
@@ -554,7 +554,8 @@ subscribe(() => {
     const liquidated = t.direction === 'long' ? mPrice <= t.liquidationPrice : mPrice >= t.liquidationPrice;
     const slHit = t.stopLoss !== null && (t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss);
     const tpHit = t.takeProfit !== null && (t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit);
-    const expired = !!rt && rt.state.minute >= 90 && !rt.state.isRunning;
+    const staleFromPreviousSession = !!rt && t.minute > 0 && rt.state.minute < t.minute;
+    const expired = !!rt && ((rt.state.minute >= 90 && !rt.state.isRunning) || staleFromPreviousSession);
 
     let reason: ClosedTrade['reason'] | null = null;
     let exitPrice = mPrice;
