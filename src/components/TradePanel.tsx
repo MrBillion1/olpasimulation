@@ -149,7 +149,7 @@ export default function TradePanel({
         size: tradeSize,
         leverage,
         timestamp: Date.now(),
-        sessionEndsAt: ms ? 90 - ms.minute : undefined,
+        sessionEndsAt: ms ? Date.now() + Math.max(0, 90 - ms.minute) * 1667 : undefined,
         stopLoss: sl,
         takeProfit: tp,
         marginMode,
@@ -170,7 +170,7 @@ export default function TradePanel({
     const trade: OpenTrade = {
       id: nextTradeId(), marketId: activeMarket.id, contract: activeMarket.contract,
       direction, entryPrice: currentPrice, size: tradeSize, leverage,
-      timestamp: Date.now(), minute: latestEvent?.minute ?? 0, sessionEndsAt: ms ? 90 - ms.minute : undefined, liquidationPrice: liqPrice,
+      timestamp: Date.now(), minute: latestEvent?.minute ?? 0, sessionEndsAt: ms ? Date.now() + Math.max(0, 90 - ms.minute) * 1667 : undefined, liquidationPrice: liqPrice,
       stopLoss: sl, takeProfit: tp, marginMode,
     };
     setBalance(b => Math.round((b - tradeSize) * 100) / 100);
