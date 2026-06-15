@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
 
 export interface OpenTrade {
@@ -11,6 +11,7 @@ export interface OpenTrade {
   leverage: number;
   timestamp: number;
   minute: number;
+  sessionEndsAt?: number;
   liquidationPrice: number;
   stopLoss: number | null;
   takeProfit: number | null;
@@ -38,6 +39,7 @@ export interface LimitOrder {
   size: number;
   leverage: number;
   timestamp: number;
+  sessionEndsAt?: number;
   stopLoss: number | null;
   takeProfit: number | null;
   marginMode: 'cross' | 'isolated';
@@ -58,6 +60,7 @@ interface TradePanelProps {
 }
 
 let tradeIdCounter = 0;
+const nextTradeId = () => Date.now() * 1000 + (++tradeIdCounter % 1000);
 
 export default function TradePanel({
   activeMarket, prices, latestEvents, balance, setBalance,
@@ -89,11 +92,6 @@ export default function TradePanel({
   // Equity = free balance + locked margin + unrealized PnL (real-time, like a derivatives exchange)
   const equity = balance + usedMargin + unrealizedPnl;
   const equityIsUp = unrealizedPnl >= 0;
-
-  // Sync limit price placeholder when price changes
-  useEffect(() => {
-    if (!limitPrice) return;
-  }, [currentPrice]);
 
   const calcLiqPrice = (entry: number, dir: 'long' | 'short', lev: number) => {
     if (dir === 'long') return Math.round(entry * (1 - 1 / lev) * 10000) / 10000;
@@ -130,92 +128,8 @@ export default function TradePanel({
     }, ...c].slice(0, 50));
   };
 
-  // Auto-liquidation + SL/TP check
-  useEffect(() => {
-    setOpenTrades(prev => {
-      const stillOpen: OpenTrade[] = [];
-      const newClosed: ClosedTrade[] = [];
-      prev.forEach(t => {
-        const mPrice = prices[t.marketId] ?? 0;
-        const isLiquidated = t.direction === 'long'
-          ? mPrice <= t.liquidationPrice
-          : mPrice >= t.liquidationPrice;
-        const slHit = t.stopLoss !== null && (
-          t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss
-        );
-        const tpHit = t.takeProfit !== null && (
-          t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit
-        );
-
-        if (isLiquidated) {
-          newClosed.push({
-            id: t.id, contract: t.contract, direction: t.direction,
-            entryPrice: t.entryPrice, exitPrice: mPrice,
-            size: t.size, leverage: t.leverage, pnl: -t.size, reason: 'liquidated',
-          });
-        } else if (slHit) {
-          const exitP = t.stopLoss!;
-          const diff = exitP - t.entryPrice;
-          const dir = t.direction === 'long' ? 1 : -1;
-          const pnl = Math.round(((diff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
-          newClosed.push({
-            id: t.id, contract: t.contract, direction: t.direction,
-            entryPrice: t.entryPrice, exitPrice: exitP,
-            size: t.size, leverage: t.leverage, pnl, reason: 'stop-loss',
-          });
-          const ret = t.size + pnl;
-          setBalance(b => Math.round((b + Math.max(0, ret)) * 100) / 100);
-        } else if (tpHit) {
-          const exitP = t.takeProfit!;
-          const diff = exitP - t.entryPrice;
-          const dir = t.direction === 'long' ? 1 : -1;
-          const pnl = Math.round(((diff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
-          newClosed.push({
-            id: t.id, contract: t.contract, direction: t.direction,
-            entryPrice: t.entryPrice, exitPrice: exitP,
-            size: t.size, leverage: t.leverage, pnl, reason: 'take-profit',
-          });
-          const ret = t.size + pnl;
-          setBalance(b => Math.round((b + Math.max(0, ret)) * 100) / 100);
-        } else {
-          stillOpen.push(t);
-        }
-      });
-      if (newClosed.length > 0) {
-        setClosedTrades(c => [...newClosed, ...c].slice(0, 50));
-      }
-      // Preserve reference when nothing changed to avoid render loops
-      // (parent rebuilds `prices` object each render → effect re-fires)
-      if (newClosed.length === 0 && stillOpen.length === prev.length) return prev;
-      return stillOpen;
-    });
-  }, [prices, setOpenTrades, setClosedTrades, setBalance]);
-
-  // Contract expiry
-  useEffect(() => {
-    if (!matchStates) return;
-    Object.entries(matchStates).forEach(([marketId, ms]) => {
-      if (ms.minute >= 90 && !ms.isRunning) {
-        const expiredTrades = openTrades.filter(t => t.marketId === marketId);
-        expiredTrades.forEach(t => {
-          const mPrice = prices[t.marketId] ?? t.entryPrice;
-          const priceDiff = mPrice - t.entryPrice;
-          const dir = t.direction === 'long' ? 1 : -1;
-          const pnl = Math.round(((priceDiff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
-          const returnAmount = t.size + pnl;
-          setBalance(b => Math.round((b + Math.max(0, returnAmount)) * 100) / 100);
-          setClosedTrades(c => [{
-            id: t.id, contract: t.contract, direction: t.direction,
-            entryPrice: t.entryPrice, exitPrice: mPrice,
-            size: t.size, leverage: t.leverage, pnl, reason: 'expired' as const,
-          }, ...c].slice(0, 50));
-        });
-        if (expiredTrades.length > 0) {
-          setOpenTrades(prev => prev.filter(t => t.marketId !== marketId));
-        }
-      }
-    });
-  }, [matchStates, openTrades, prices, setBalance, setOpenTrades, setClosedTrades]);
+  // Position expiry, liquidation, SL/TP are handled by the global simulation store
+  // so they keep working when this trade panel is unmounted on SCL routes.
 
   const openTrade = (direction: 'long' | 'short') => {
     if (tradeSize > balance || tradeSize <= 0) return;
@@ -227,7 +141,7 @@ export default function TradePanel({
       if (isNaN(lp) || lp <= 0) return;
       const { sl, tp } = calcSlTp(lp, direction);
       const order: LimitOrder = {
-        id: ++tradeIdCounter,
+        id: nextTradeId(),
         marketId: activeMarket.id,
         contract: activeMarket.contract,
         direction,
@@ -235,6 +149,7 @@ export default function TradePanel({
         size: tradeSize,
         leverage,
         timestamp: Date.now(),
+        sessionEndsAt: ms ? Date.now() + Math.max(0, 90 - ms.minute) * 1667 : undefined,
         stopLoss: sl,
         takeProfit: tp,
         marginMode,
@@ -253,9 +168,9 @@ export default function TradePanel({
     const liqPrice = calcLiqPrice(currentPrice, direction, leverage);
     const { sl, tp } = calcSlTp(currentPrice, direction);
     const trade: OpenTrade = {
-      id: ++tradeIdCounter, marketId: activeMarket.id, contract: activeMarket.contract,
+      id: nextTradeId(), marketId: activeMarket.id, contract: activeMarket.contract,
       direction, entryPrice: currentPrice, size: tradeSize, leverage,
-      timestamp: Date.now(), minute: latestEvent?.minute ?? 0, liquidationPrice: liqPrice,
+      timestamp: Date.now(), minute: latestEvent?.minute ?? 0, sessionEndsAt: ms ? Date.now() + Math.max(0, 90 - ms.minute) * 1667 : undefined, liquidationPrice: liqPrice,
       stopLoss: sl, takeProfit: tp, marginMode,
     };
     setBalance(b => Math.round((b - tradeSize) * 100) / 100);
