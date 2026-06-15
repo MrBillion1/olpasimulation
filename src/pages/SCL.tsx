@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { useStore } from '@/hooks/useStore';
 import { actions } from '@/lib/simulation-store';
 import { MARKETS } from '@/lib/match-engine';
@@ -15,9 +16,18 @@ export default function SCL() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* top bar */}
       <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
-        <span className="font-mono text-[11px] font-bold text-gold tracking-wider">
-          SOCIAL CONVICTION LAYER <span className="text-muted-foreground">·</span> OLPA DEX
-        </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <Link
+            to="/scl/mcimun"
+            title="Back to Contract Hub"
+            className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gold px-3 py-1.5 rounded border border-gold/50 bg-gold/10 hover:bg-gold/20 hover:border-gold transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Link>
+          <span className="font-mono text-[11px] font-bold text-gold tracking-wider truncate">
+            SOCIAL CONVICTION LAYER <span className="text-muted-foreground">·</span> OLPA DEX
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={actions.startAll}
