@@ -49,6 +49,7 @@ export interface OpenTrade {
   leverage: number;
   timestamp: number;
   minute: number;
+  sessionEndsAt?: number;
   liquidationPrice: number;
   stopLoss: number | null;
   takeProfit: number | null;
@@ -76,6 +77,7 @@ export interface LimitOrder {
   size: number;
   leverage: number;
   timestamp: number;
+  sessionEndsAt?: number;
   stopLoss: number | null;
   takeProfit: number | null;
   marginMode: 'cross' | 'isolated';
@@ -391,6 +393,7 @@ function tick() {
     const newPosts: SocialPost[] = [];
     const expiredClosed: ClosedTrade[] = [];
     const expiredIds = new Set<number>();
+    const expiredOrderIds = new Set<number>();
     let balanceDelta = 0;
     let changed = false;
     MARKETS.forEach(m => {
@@ -422,6 +425,11 @@ function tick() {
             entryPrice: t.entryPrice, exitPrice: finalPrice,
             size: t.size, leverage: t.leverage, pnl, reason: 'expired',
           });
+        });
+        s.limitOrders.forEach(o => {
+          if (o.marketId !== m.id || expiredOrderIds.has(o.id)) return;
+          expiredOrderIds.add(o.id);
+          balanceDelta += o.size;
         });
 
         const score = `${rt.state.homeScore}-${rt.state.awayScore}`;
@@ -462,6 +470,7 @@ function tick() {
       runtimes: next,
       posts: newPosts.length > 0 ? [...newPosts.reverse(), ...s.posts].slice(0, 500) : s.posts,
       openTrades: expiredIds.size > 0 ? s.openTrades.filter(t => !expiredIds.has(t.id)) : s.openTrades,
+      limitOrders: expiredOrderIds.size > 0 ? s.limitOrders.filter(o => !expiredOrderIds.has(o.id)) : s.limitOrders,
       closedTrades: expiredClosed.length > 0 ? [...expiredClosed, ...s.closedTrades].slice(0, 50) : s.closedTrades,
       balance: balanceDelta !== 0 ? Math.round((s.balance + balanceDelta) * 100) / 100 : s.balance,
       
