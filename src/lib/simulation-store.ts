@@ -555,7 +555,8 @@ subscribe(() => {
     const slHit = t.stopLoss !== null && (t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss);
     const tpHit = t.takeProfit !== null && (t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit);
     const staleFromPreviousSession = !!rt && t.minute > 0 && rt.state.minute < t.minute;
-    const expired = !!rt && ((rt.state.minute >= 90 && !rt.state.isRunning) || staleFromPreviousSession);
+    const timedOutFromHiddenSession = typeof t.sessionEndsAt === 'number' && Date.now() >= t.sessionEndsAt;
+    const expired = !!rt && ((rt.state.minute >= 90 && !rt.state.isRunning) || staleFromPreviousSession || timedOutFromHiddenSession);
 
     let reason: ClosedTrade['reason'] | null = null;
     let exitPrice = mPrice;
