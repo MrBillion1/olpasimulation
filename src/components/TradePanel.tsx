@@ -11,6 +11,7 @@ export interface OpenTrade {
   leverage: number;
   timestamp: number;
   minute: number;
+  sessionEndsAt?: number;
   liquidationPrice: number;
   stopLoss: number | null;
   takeProfit: number | null;
@@ -38,6 +39,7 @@ export interface LimitOrder {
   size: number;
   leverage: number;
   timestamp: number;
+  sessionEndsAt?: number;
   stopLoss: number | null;
   takeProfit: number | null;
   marginMode: 'cross' | 'isolated';
