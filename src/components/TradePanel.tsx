@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
 
 export interface OpenTrade {
@@ -58,6 +58,7 @@ interface TradePanelProps {
 }
 
 let tradeIdCounter = 0;
+const nextTradeId = () => Date.now() * 1000 + (++tradeIdCounter % 1000);
 
 export default function TradePanel({
   activeMarket, prices, latestEvents, balance, setBalance,
@@ -89,11 +90,6 @@ export default function TradePanel({
   // Equity = free balance + locked margin + unrealized PnL (real-time, like a derivatives exchange)
   const equity = balance + usedMargin + unrealizedPnl;
   const equityIsUp = unrealizedPnl >= 0;
-
-  // Sync limit price placeholder when price changes
-  useEffect(() => {
-    if (!limitPrice) return;
-  }, [currentPrice]);
 
   const calcLiqPrice = (entry: number, dir: 'long' | 'short', lev: number) => {
     if (dir === 'long') return Math.round(entry * (1 - 1 / lev) * 10000) / 10000;
