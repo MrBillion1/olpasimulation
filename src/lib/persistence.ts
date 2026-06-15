@@ -4,10 +4,47 @@
 // Lives outside React so navigation between pages can't pause it.
 
 import { supabase } from '@/integrations/supabase/client';
-import { actions, getState, subscribe } from '@/lib/simulation-store';
+import { actions, getState, subscribe, OpenTrade, ClosedTrade, LimitOrder } from '@/lib/simulation-store';
 
 let loaded = false;
 let installed = false;
+
+const SIM_MINUTE_MS = 1667;
+
+function splitExpiredPersistedTrades(openTrades: OpenTrade[] = [], closedTrades: ClosedTrade[] = []) {
+  const now = Date.now();
+  const active: OpenTrade[] = [];
+  const expired: ClosedTrade[] = [];
+  let refund = 0;
+
+  openTrades.forEach(t => {
+    const endsAt = t.sessionEndsAt ?? (t.timestamp + Math.max(0, 90 - (t.minute ?? 0)) * SIM_MINUTE_MS);
+    if (endsAt <= now) {
+      refund += t.size;
+      expired.push({
+        id: t.id, contract: t.contract, direction: t.direction,
+        entryPrice: t.entryPrice, exitPrice: t.entryPrice,
+        size: t.size, leverage: t.leverage, pnl: 0, reason: 'expired',
+      });
+    } else {
+      active.push({ ...t, sessionEndsAt: endsAt });
+    }
+  });
+
+  return { active, closed: [...expired, ...closedTrades].slice(0, 50), refund };
+}
+
+function splitExpiredPersistedOrders(limitOrders: LimitOrder[] = []) {
+  const now = Date.now();
+  let refund = 0;
+  const active = limitOrders.filter(o => {
+    const endsAt = o.sessionEndsAt ?? (o.timestamp + 90 * SIM_MINUTE_MS);
+    const keep = endsAt > now;
+    if (!keep) refund += o.size;
+    return keep;
+  }).map(o => ({ ...o, sessionEndsAt: o.sessionEndsAt ?? (o.timestamp + 90 * SIM_MINUTE_MS) }));
+  return { active, refund };
+}
 
 export async function loadPersistedState() {
   if (loaded) return;
@@ -15,11 +52,13 @@ export async function loadPersistedState() {
   try {
     const { data, error } = await supabase.functions.invoke('trading-session', { method: 'GET' });
     if (!error && data && !data.isNew) {
+      const trades = splitExpiredPersistedTrades(data.openTrades || [], data.closedTrades || []);
+      const orders = splitExpiredPersistedOrders(data.limitOrders || []);
       actions.hydrate({
-        balance: data.balance,
-        openTrades: data.openTrades || [],
-        closedTrades: data.closedTrades || [],
-        limitOrders: data.limitOrders || [],
+        balance: Math.round((data.balance + trades.refund + orders.refund) * 100) / 100,
+        openTrades: trades.active,
+        closedTrades: trades.closed,
+        limitOrders: orders.active,
       });
     }
   } catch (e) {
