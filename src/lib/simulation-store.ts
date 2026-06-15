@@ -180,7 +180,9 @@ export function subscribe(l: () => void): () => void {
 }
 
 function setState(updater: (s: State) => State) {
-  state = updater(state);
+  const next = updater(state);
+  if (Object.is(next, state)) return;
+  state = next;
   notify();
 }
 
@@ -500,26 +502,28 @@ export function startEngine() {
   reschedule();
 }
 
-// auto-execute limit orders + liquidations: piggybacks on subscribe
+// auto-execute limit orders + position risk checks globally, even when Terminal is unmounted.
 let prevPriceSig = '';
 subscribe(() => {
   const s = getState();
-  const priceSig = MARKETS.map(m => s.runtimes[m.id].currentPrice).join('|');
+  const priceSig = [
+    MARKETS.map(m => `${s.runtimes[m.id].currentPrice}:${s.runtimes[m.id].state.minute}:${s.runtimes[m.id].state.isRunning ? 1 : 0}`).join('|'),
+    s.limitOrders.map(o => `${o.id}:${o.marketId}:${o.direction}:${o.limitPrice}`).join(','),
+    s.openTrades.map(t => `${t.id}:${t.marketId}:${t.size}:${t.liquidationPrice}:${t.stopLoss ?? ''}:${t.takeProfit ?? ''}`).join(','),
+  ].join('||');
   if (priceSig === prevPriceSig) return;
   prevPriceSig = priceSig;
 
-  // Limit order fills
-  if (s.limitOrders.length > 0) {
-    const remaining: LimitOrder[] = [];
-    const toFill: LimitOrder[] = [];
-    s.limitOrders.forEach(o => {
-      const p = s.runtimes[o.marketId]?.currentPrice;
-      if (p == null) { remaining.push(o); return; }
-      const ok = o.direction === 'long' ? p <= o.limitPrice : p >= o.limitPrice;
-      if (ok) toFill.push(o); else remaining.push(o);
-    });
-    if (toFill.length > 0) {
-      const newTrades: OpenTrade[] = toFill.map(o => {
+  const remainingOrders: LimitOrder[] = [];
+  const toFill: LimitOrder[] = [];
+  s.limitOrders.forEach(o => {
+    const p = s.runtimes[o.marketId]?.currentPrice;
+    if (p == null) { remainingOrders.push(o); return; }
+    const ok = o.direction === 'long' ? p <= o.limitPrice : p >= o.limitPrice;
+    if (ok) toFill.push(o); else remainingOrders.push(o);
+  });
+
+  const filledTrades: OpenTrade[] = toFill.map(o => {
         const liq = o.direction === 'long'
           ? Math.round(o.limitPrice * (1 - 1 / o.leverage) * 10000) / 10000
           : Math.round(o.limitPrice * (1 + 1 / o.leverage) * 10000) / 10000;
@@ -530,11 +534,46 @@ subscribe(() => {
           liquidationPrice: liq, stopLoss: o.stopLoss, takeProfit: o.takeProfit, marginMode: o.marginMode,
         };
       });
-      setState(cur => ({
-        ...cur,
-        limitOrders: remaining,
-        openTrades: [...newTrades, ...cur.openTrades],
-      }));
+
+  const stillOpen: OpenTrade[] = [];
+  const closed: ClosedTrade[] = [];
+  let balanceDelta = 0;
+
+  [...filledTrades, ...s.openTrades].forEach(t => {
+    const rt = s.runtimes[t.marketId];
+    const mPrice = rt?.currentPrice ?? t.entryPrice;
+    const liquidated = t.direction === 'long' ? mPrice <= t.liquidationPrice : mPrice >= t.liquidationPrice;
+    const slHit = t.stopLoss !== null && (t.direction === 'long' ? mPrice <= t.stopLoss : mPrice >= t.stopLoss);
+    const tpHit = t.takeProfit !== null && (t.direction === 'long' ? mPrice >= t.takeProfit : mPrice <= t.takeProfit);
+    const expired = !!rt && rt.state.minute >= 90 && !rt.state.isRunning;
+
+    let reason: ClosedTrade['reason'] | null = null;
+    let exitPrice = mPrice;
+    if (expired) reason = 'expired';
+    else if (liquidated) reason = 'liquidated';
+    else if (slHit) { reason = 'stop-loss'; exitPrice = t.stopLoss!; }
+    else if (tpHit) { reason = 'take-profit'; exitPrice = t.takeProfit!; }
+
+    if (!reason) { stillOpen.push(t); return; }
+
+    const priceDiff = exitPrice - t.entryPrice;
+    const dir = t.direction === 'long' ? 1 : -1;
+    const rawPnl = Math.round(((priceDiff / t.entryPrice) * t.size * t.leverage * dir) * 100) / 100;
+    const pnl = reason === 'liquidated' ? -t.size : rawPnl;
+    if (reason !== 'liquidated') balanceDelta += Math.max(0, t.size + pnl);
+    closed.push({
+      id: t.id, contract: t.contract, direction: t.direction,
+      entryPrice: t.entryPrice, exitPrice, size: t.size, leverage: t.leverage, pnl, reason,
+    });
+  });
+
+  if (toFill.length > 0 || closed.length > 0) {
+    setState(cur => ({
+      ...cur,
+      limitOrders: toFill.length > 0 ? remainingOrders : cur.limitOrders,
+      openTrades: stillOpen,
+      closedTrades: closed.length > 0 ? [...closed, ...cur.closedTrades].slice(0, 50) : cur.closedTrades,
+      balance: balanceDelta !== 0 ? Math.round((cur.balance + balanceDelta) * 100) / 100 : cur.balance,
+    }));
     }
-  }
 });
