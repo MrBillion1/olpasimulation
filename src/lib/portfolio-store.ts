@@ -119,7 +119,7 @@ export const portfolioActions = {
       contracts,
       equityHistory: [{ t: Date.now(), equity: margin }],
       events: [{
-        t: Date.now(), kind: 'open',
+        t: Date.now(), kind: 'open' as const,
         message: `Opened "${name}" · $${margin} margin · ${contracts.length} contracts`,
       }],
       createdAt: Date.now(),
@@ -146,7 +146,7 @@ export const portfolioActions = {
         ...x,
         withdrawn: Math.round((x.withdrawn + amt) * 100) / 100,
         events: [{
-          t: Date.now(), kind: 'partial-close',
+          t: Date.now(), kind: 'partial-close' as const,
           message: `Withdrew $${amt.toFixed(2)} from portfolio`,
           delta: -amt,
         }, ...x.events].slice(0, 50),
@@ -167,7 +167,7 @@ export const portfolioActions = {
           ? { ...c, status: 'closed', realizedPnl: contractPnl(c, prices[c.contractId] ?? c.entryPrice), exitPrice: prices[c.contractId] ?? c.entryPrice, closedAt: Date.now() }
           : c),
         events: [{
-          t: Date.now(), kind: 'close',
+          t: Date.now(), kind: 'close' as const,
           message: `Closed portfolio · final equity $${equity.toFixed(2)}`,
         }, ...x.events].slice(0, 50),
       }),
@@ -211,7 +211,7 @@ subSim(() => {
       if (sessionEnded) {
         const pnl = contractPnl(c, mp);
         newEvents.push({
-          t: Date.now(), kind: 'contract-tp',
+          t: Date.now(), kind: 'contract-tp' as const,
           message: `${c.contract} session ended · settled ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`,
           delta: pnl,
         });
@@ -222,7 +222,7 @@ subSim(() => {
       const trig = checkTrigger(c, mp);
       if (trig.hit === 'tp') {
         newEvents.push({
-          t: Date.now(), kind: 'contract-tp',
+          t: Date.now(), kind: 'contract-tp' as const,
           message: `${c.contract} hit TP +${c.tpPct}% · +$${trig.pnl.toFixed(2)}`,
           delta: trig.pnl,
         });
@@ -231,7 +231,7 @@ subSim(() => {
       }
       if (trig.hit === 'sl') {
         newEvents.push({
-          t: Date.now(), kind: 'contract-sl',
+          t: Date.now(), kind: 'contract-sl' as const,
           message: `${c.contract} hit SL -${c.slPct}% · -$${Math.abs(trig.pnl).toFixed(2)}`,
           delta: trig.pnl,
         });
@@ -265,7 +265,7 @@ subSim(() => {
         ? { ...c, status: 'closed' as const, realizedPnl: contractPnl(c, prices[c.contractId] ?? c.entryPrice), exitPrice: prices[c.contractId] ?? c.entryPrice, closedAt: Date.now() }
         : c);
       newEvents.push({
-        t: Date.now(), kind: 'liquidate',
+        t: Date.now(), kind: 'liquidate' as const,
         message: 'Portfolio liquidated — equity reached zero',
       });
       mutated = true;
@@ -278,7 +278,7 @@ subSim(() => {
         closedAt = Date.now();
         refund += Math.max(0, equity);
         newEvents.push({
-          t: Date.now(), kind: 'close',
+          t: Date.now(), kind: 'close' as const,
           message: `All contracts settled · final equity $${equity.toFixed(2)}`,
         });
         mutated = true;
