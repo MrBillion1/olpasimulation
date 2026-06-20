@@ -6,6 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const MAX_TRADES = 500;
+const MIN_BALANCE = 0;
+const MAX_BALANCE = 1_000_000;
+
+function sanitizeTrades(input: unknown): unknown[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, MAX_TRADES).filter((t) => t && typeof t === "object");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -15,9 +24,8 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Get client IP from headers
+  // Trust only Cloudflare-set headers; never the client-controlled x-forwarded-for first entry.
   const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("cf-connecting-ip") ||
     req.headers.get("x-real-ip") ||
     "unknown";
@@ -26,7 +34,6 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method === "GET") {
-      // Load session for today
       const { data, error } = await supabase
         .from("trading_sessions")
         .select("*")
@@ -37,7 +44,6 @@ Deno.serve(async (req) => {
       if (error) throw error;
 
       if (!data) {
-        // No session today — return fresh state
         return new Response(
           JSON.stringify({
             balance: 10000,
@@ -63,17 +69,32 @@ Deno.serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const body = await req.json();
-      const { balance, openTrades, closedTrades, limitOrders } = body;
-
-      if (typeof balance !== "number") {
+      const body = await req.json().catch(() => null);
+      if (!body || typeof body !== "object") {
         return new Response(
-          JSON.stringify({ error: "balance must be a number" }),
+          JSON.stringify({ error: "Invalid request body" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Upsert session for today
+      const { balance, openTrades, closedTrades, limitOrders } = body as Record<string, unknown>;
+
+      if (
+        typeof balance !== "number" ||
+        !Number.isFinite(balance) ||
+        balance < MIN_BALANCE ||
+        balance > MAX_BALANCE
+      ) {
+        return new Response(
+          JSON.stringify({ error: "balance must be a number between 0 and 1,000,000" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const safeOpen = sanitizeTrades(openTrades);
+      const safeClosed = sanitizeTrades(closedTrades);
+      const safeLimits = sanitizeTrades(limitOrders);
+
       const { error } = await supabase
         .from("trading_sessions")
         .upsert(
@@ -81,9 +102,9 @@ Deno.serve(async (req) => {
             ip_address: ip,
             session_date: today,
             balance,
-            open_trades: openTrades ?? [],
-            closed_trades: closedTrades ?? [],
-            limit_orders: limitOrders ?? [],
+            open_trades: safeOpen,
+            closed_trades: safeClosed,
+            limit_orders: safeLimits,
           },
           { onConflict: "ip_address,session_date" }
         );
@@ -103,7 +124,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("Trading session error:", err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
