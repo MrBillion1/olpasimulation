@@ -69,6 +69,7 @@ export default function TradePanel({
   openTrades, setOpenTrades, closedTrades, setClosedTrades, matchStates,
   onPlaceLimitOrder,
 }: TradePanelProps) {
+  const [tradeMode, setTradeMode] = useState<'single' | 'multi'>('single');
   const [tradeSize, setTradeSize] = useState(100);
   const [leverage, setLeverage] = useState(5);
   const [slEnabled, setSlEnabled] = useState(false);
