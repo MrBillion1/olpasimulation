@@ -1,56 +1,126 @@
+# Multi-Market Portfolio Trading — Implementation Plan
 
-# Global Live Conviction Feed
-
-Turn the SCL feed into a single market-wide stream. Every hub page shows the same feed; posts auto-map to contracts via text detection; NPCs post about every running contract continuously; composer loses its contract chip.
-
----
-
-## 1. Composer simplification (`src/components/scl/PostComposer.tsx`)
-
-- Remove the `MCIMUN/USDT` (active contract) chip/selector entirely.
-- Keep only: textarea, **Attach Live Position** button, **Post** button.
-- On submit, run the body through `detectContract()` from `src/lib/contract-router.ts`:
-  - If a contract is matched → tag the post with that `contractId` so `PostCard` renders the live ticker/state/price/ROI badge.
-  - If nothing matches → post as a plain market thought (no ticker badge, no price sync). `PostCard` already tolerates a missing contract; we'll confirm the empty-badge path.
-- Attach-position flow unchanged: the attached position itself carries its contract, and the conviction badge still syncs price + ROI live.
-
-## 2. Global feed everywhere (`src/pages/SCLHub.tsx` + `src/pages/SCL.tsx`)
-
-- Today `SCLHub` filters posts by the hub's `contractId`. Remove that filter — both pages render the full `posts` array from the store.
-- Hub pages keep their per-contract panels (chart, computed pricing, H2H, AI analysis, order book) on top; the feed below is identical across all hubs and the main `/scl` page.
-- Single shared `<FeedPanel>` component extracted from the current hub layout so both routes render the same list and composer (DRY; ensures parity).
-
-## 3. Multi-contract NPC stream (`src/lib/simulation-store.ts` + `src/lib/npc-voices.ts`)
-
-Current behavior: NPC posts are generated only for whichever runtime is "focused." New behavior:
-
-- The store's tick loop already advances **every** market's runtime. Extend the NPC emitter so on each tick, for every running contract, it probabilistically emits an AI post tagged with that contract's id.
-- Each NPC post pulls live state for its own contract (minute, score, last event, current price, momentum) so the body reads correctly even though the user may be looking at a different hub.
-- Throttle per-contract independently (e.g., min 8–15s gap per contract, jittered) so 6 contracts running simultaneously don't flood the feed. Combined with a global cap (e.g., max 1 NPC post per 2s across all contracts) to keep the feed readable.
-- Session-end / session-start divider posts already work per contract — keep as is.
-
-## 4. PostCard (`src/components/scl/PostCard.tsx`)
-
-- No structural changes. It already resolves `contractId` → live runtime → price/state/ROI. Just verify it renders cleanly when `contractId` is null (plain post, no badge).
-
-## 5. Routing/nav
-
-- Hub selector at the top of `/scl/:id` remains as a quick way to switch the *info panels* above the feed. Feed is no longer affected by which hub is active.
+This is a large addition. To keep the existing OLPA terminal stable, I'll layer a new **Multi-Market** mode on top of the current trade panel without rewriting the Single-Market flow. Below is the full scope grouped into phases so we can ship incrementally and you can sanity-check between phases.
 
 ---
 
-## Technical notes
+## Phase 1 — Mode Switch + Multi-Market Panel (foundation)
 
-- `detectContract` is already alias-aware (team names, derby monikers, tickers) — no changes needed.
-- Store actions touched: `addPost` (accept optional `contractId`), `tickNpcPosts` (iterate all runtimes instead of one).
-- No schema/Supabase changes. Pure client/state work.
-- No new dependencies.
+**Files added**
+- `src/components/multi/MultiMarketPanel.tsx` — portfolio builder UI
+- `src/components/multi/ContractRow.tsx` — per-contract editor row
+- `src/components/multi/PortfolioCalculator.tsx` — live calc & leverage→margin allocation bars
+- `src/lib/portfolio-store.ts` — Zustand store + types for portfolios
+- `src/lib/portfolio-math.ts` — pure functions: allocation, exposure, effective leverage, health, target payout, reward/risk
 
-## Out of scope
+**Files edited**
+- `src/components/TradePanel.tsx` — add top-level **SINGLE MARKET / MULTI MARKET** toggle; current ticket renders for Single; new panel renders for Multi
+- `src/lib/persistence.ts` — persist portfolios + per-session expiry like existing trades
 
-- Per-user feed filters (e.g., "show only ACMINT") — can be added later as a client-side filter pill row above the feed if you want.
-- Notifications when a post you wrote references a contract whose state changes.
+**Multi-Market panel contents**
+- Portfolio Name input
+- Portfolio Margin input (capped by shared $10k account)
+- Add Contract button (max 5)
+- Each row: Contract picker (6 OLPA contracts), Long/Short, Leverage (1–20x), TP%, SL%
+- Live calculator: Total Margin, Total Exposure, Effective Leverage, Conviction Score, Health, Target Payout, Reward/Risk
+- Leverage-driven allocation bars (no manual % allocation)
+
+**Allocation formula (leverage-weighted)**
+```
+weight_i = leverage_i / Σ leverage_j
+margin_i = portfolio_margin × weight_i
+exposure_i = margin_i × leverage_i
+```
 
 ---
 
-Confirm and I'll implement.
+## Phase 2 — Confirmation Screens
+
+**Added**
+- `src/components/multi/PortfolioConfirmModal.tsx` — mandatory pre-open confirmation (name, contracts, directions, leverage, TP/SL, allocations, exposure, target payout, risk score, health, max drawdown, reward/risk) → **Confirm Portfolio** button
+- `src/components/SingleMarketConfirmModal.tsx` — same pattern for existing Single-Market opens (direction, margin, leverage, TP, SL, exposure, est. liquidation)
+
+**Edited**
+- `src/components/TradePanel.tsx` — route Long/Short clicks through confirm modal
+
+---
+
+## Phase 3 — Live Portfolio Tracker
+
+**Added**
+- `src/pages/PortfolioTracker.tsx` (route `/portfolio/:id`) showing:
+  - Portfolio Equity, Live Value, Aggregate PnL, Health, Liquidation Buffer, Target Payout, Progress-to-Target
+  - Contract monitoring list: current state, PnL, exposure, reality status, TP progress, SL distance
+  - Reality Injection visualization chain (Event → State → Price → Repricing → PnL → Portfolio)
+  - Portfolio Attrition widget (equity timeline points)
+- `src/components/multi/ContractClosedToast.tsx` — SL hit overlay showing old vs new equity/exposure/health
+
+**Edited**
+- `src/lib/simulation-store.ts` — global subscribe: per-tick contract PnL → portfolio recalculation; SL/TP per-contract closure; portfolio liquidation when equity ≤ 0; record equity history points
+
+---
+
+## Phase 4 — Partial / Full Close + Liquidation
+
+**Added**
+- `src/components/multi/PartialCloseModal.tsx` — withdraw amount slider (1–100% of equity), shows Current Equity, Amount Withdrawn, New Equity/Exposure/Health/Liq Buffer; requires confirm
+- `src/components/multi/FullCloseModal.tsx` — Portfolio Value, Realized P/L, Funds Returned, Final Settlement; requires confirm
+- `src/components/multi/LiquidationScreen.tsx` — Portfolio Insolvency: contracts closed, remaining equity, realized loss, reason (Repeated SL / Insufficient Equity / Insufficient Support)
+
+---
+
+## Phase 5 — TP/SL Education + Polish
+
+**Added**
+- `src/components/multi/TpSlEducationCard.tsx` — collapsible "How TP/SL Works" explainer (TP/SL shape reward/risk/conviction/target — reality generates profit)
+
+**Polish**
+- Match existing dark theme + gold accents
+- Reuse shadcn primitives (Card, Button, Dialog, Slider, Progress)
+- Multi-Market panel uses the same panel chrome as Single-Market
+
+---
+
+## Data model additions (TypeScript)
+
+```ts
+type PortfolioContract = {
+  contractId: ContractId;
+  direction: "long" | "short";
+  leverage: number;
+  tpPct: number;
+  slPct: number;
+  entryPrice: number;
+  marginAlloc: number;   // derived
+  exposure: number;       // derived
+  status: "active" | "tp" | "sl" | "closed";
+  realizedPnl: number;
+};
+
+type Portfolio = {
+  id: string;
+  name: string;
+  margin: number;            // initial
+  equity: number;            // live
+  contracts: PortfolioContract[];
+  equityHistory: { t: number; equity: number }[];
+  sessionEndsAt: number;
+  status: "active" | "closed" | "liquidated";
+  createdAt: number;
+};
+```
+
+---
+
+## What stays untouched
+- Single-Market ticket layout (Cross/Isolated, Market/Limit, Size, Leverage, TP, SL, Long, Short)
+- SCL pages, pitch sim, event feed, market selector, price chart
+- Shared $10k IP-based daily margin reset
+
+---
+
+## Suggested rollout
+
+Ship Phase 1+2 first so you can build/confirm portfolios end-to-end against the live sim. Phase 3 wires the tracker. Phase 4+5 close the loop with partial/full close, liquidation, and the TP/SL explainer.
+
+**Reply "go" to start Phase 1, or tell me which phase to prioritize / drop.**
