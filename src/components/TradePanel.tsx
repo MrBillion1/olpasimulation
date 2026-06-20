@@ -405,5 +405,11 @@ export default function TradePanel({
         </>
       )}
     </div>
+      )}
+
+      {/* Portfolio tracker always visible when active portfolios exist */}
+      {tradeMode === 'single' && <PortfolioTrackerCard prices={prices} />}
+    </div>
   );
 }
+
