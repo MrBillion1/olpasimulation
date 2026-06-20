@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
+import MultiMarketPanel from '@/components/multi/MultiMarketPanel';
+import PortfolioTrackerCard from '@/components/multi/PortfolioTrackerCard';
 
 export interface OpenTrade {
   id: number;
@@ -67,6 +69,7 @@ export default function TradePanel({
   openTrades, setOpenTrades, closedTrades, setClosedTrades, matchStates,
   onPlaceLimitOrder,
 }: TradePanelProps) {
+  const [tradeMode, setTradeMode] = useState<'single' | 'multi'>('single');
   const [tradeSize, setTradeSize] = useState(100);
   const [leverage, setLeverage] = useState(5);
   const [slEnabled, setSlEnabled] = useState(false);
@@ -180,6 +183,34 @@ export default function TradePanel({
   const isExpired = matchStates?.[activeMarket.id]?.minute >= 90 && !matchStates?.[activeMarket.id]?.isRunning;
 
   return (
+    <div className="space-y-2">
+      {/* Top-level mode selector */}
+      <div className="bg-card border border-border rounded-lg p-1 flex gap-1">
+        {([
+          { id: 'single', label: 'Single Market', sub: '1 Market · 1 Position' },
+          { id: 'multi', label: 'Multi Market', sub: '1 Portfolio · Up to 5' },
+        ] as const).map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => setTradeMode(opt.id)}
+            className={`flex-1 px-2 py-1.5 rounded text-left transition-all ${
+              tradeMode === opt.id
+                ? 'bg-gold text-primary-foreground'
+                : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-secondary'
+            }`}
+          >
+            <div className="text-[10px] font-bold uppercase tracking-wider leading-tight">{opt.label}</div>
+            <div className={`text-[8px] font-mono leading-tight ${tradeMode === opt.id ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{opt.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {tradeMode === 'multi' ? (
+        <>
+          <MultiMarketPanel balance={balance} />
+          <PortfolioTrackerCard prices={prices} />
+        </>
+      ) : (
     <div className="bg-card border border-border rounded-lg p-3">
       {/* Header */}
       <div className="mb-2">
@@ -202,6 +233,7 @@ export default function TradePanel({
           <span className="text-[10px] text-muted-foreground font-semibold">🏁 Contract expired</span>
         </div>
       )}
+
 
       {!isExpired && (
         <>
@@ -373,5 +405,11 @@ export default function TradePanel({
         </>
       )}
     </div>
+      )}
+
+      {/* Portfolio tracker always visible when active portfolios exist */}
+      {tradeMode === 'single' && <PortfolioTrackerCard prices={prices} />}
+    </div>
   );
 }
+
