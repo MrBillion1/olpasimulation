@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
+import MultiMarketPanel from '@/components/multi/MultiMarketPanel';
+import PortfolioTrackerCard from '@/components/multi/PortfolioTrackerCard';
 
 export interface OpenTrade {
   id: number;
