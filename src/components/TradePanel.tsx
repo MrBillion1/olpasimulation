@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
 import MultiMarketPanel from '@/components/multi/MultiMarketPanel';
 import PortfolioTrackerCard from '@/components/multi/PortfolioTrackerCard';
+import AdjustLeverageModal from '@/components/AdjustLeverageModal';
 
 export interface OpenTrade {
   id: number;
@@ -237,21 +239,14 @@ export default function TradePanel({
 
       {!isExpired && (
         <>
-          {/* Cross / Isolated */}
-          <div className="flex gap-1 mb-2">
-            {(['cross', 'isolated'] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setMarginMode(mode)}
-                className={`flex-1 text-[9px] py-1 rounded font-semibold uppercase tracking-wider transition-all ${
-                  marginMode === mode
-                    ? 'bg-gold text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
+          {/* Mode + Leverage — Bybit-style header row */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <MarginModeSelect value={marginMode} onChange={setMarginMode} />
+            <LeverageSelect
+              value={leverage}
+              onChange={setLeverage}
+              onCustomize={() => setShowLevModal(true)}
+            />
           </div>
 
           {/* Market / Limit */}
@@ -305,26 +300,6 @@ export default function TradePanel({
             </div>
           </div>
 
-          {/* Leverage */}
-          <div className="mb-2">
-            <label className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-0.5">Leverage</label>
-            <div className="flex gap-0.5">
-              {[1, 2, 5, 10, 20].map(lev => (
-                <button
-                  key={lev}
-                  onClick={() => setLeverage(lev)}
-                  className={`flex-1 text-[9px] py-1 rounded font-semibold transition-all ${
-                    leverage === lev
-                      ? 'bg-gold text-primary-foreground'
-                      : 'bg-secondary text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {lev}x
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* SL/TP */}
           <div className="mb-2 space-y-1">
             <div className="flex items-center gap-2">
@@ -375,23 +350,23 @@ export default function TradePanel({
             )}
           </div>
 
-          {/* Buy/Sell */}
-          <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {/* Long / Short — pill style */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               onClick={() => openTrade('long')}
               disabled={tradeSize > balance}
-              className="bg-accent text-accent-foreground font-semibold text-[10px] py-2 rounded
-                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
+              className="bg-accent text-accent-foreground font-bold text-[12px] py-2.5 rounded-full
+                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40 shadow-sm"
             >
-              {orderType === 'limit' ? 'Limit' : ''} Long / Buy
+              {orderType === 'limit' ? 'Limit ' : ''}Long
             </button>
             <button
               onClick={() => openTrade('short')}
               disabled={tradeSize > balance}
-              className="bg-destructive text-destructive-foreground font-semibold text-[10px] py-2 rounded
-                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
+              className="bg-destructive text-destructive-foreground font-bold text-[12px] py-2.5 rounded-full
+                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40 shadow-sm"
             >
-              {orderType === 'limit' ? 'Limit' : ''} Short / Sell
+              {orderType === 'limit' ? 'Limit ' : ''}Short
             </button>
           </div>
 
