@@ -385,6 +385,98 @@ export default function TradePanel({
 
       {/* Portfolio tracker always visible when active portfolios exist */}
       {tradeMode === 'single' && <PortfolioTrackerCard prices={prices} />}
+
+      {showLevModal && (
+        <AdjustLeverageModal
+          initial={leverage}
+          notional={tradeSize}
+          onConfirm={(v) => { setLeverage(v); setShowLevModal(false); }}
+          onCancel={() => setShowLevModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Margin Mode dropdown (Cross / Isolated) ─── */
+function MarginModeSelect({ value, onChange }: { value: 'cross' | 'isolated'; onChange: (m: 'cross' | 'isolated') => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full bg-secondary border border-border rounded px-2.5 py-2 flex items-center justify-between hover:border-gold/50 transition-colors"
+      >
+        <span className="text-[11px] font-semibold text-foreground capitalize">{value}</span>
+        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-card border border-border rounded shadow-xl overflow-hidden">
+          {(['cross', 'isolated'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { onChange(m); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-[11px] font-semibold capitalize transition-colors ${
+                value === m ? 'text-gold bg-secondary' : 'text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Leverage dropdown with preset stops + Customize ─── */
+function LeverageSelect({
+  value, onChange, onCustomize,
+}: { value: number; onChange: (n: number) => void; onCustomize: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const STOPS = [1, 2, 3, 5, 10, 25, 50, 100];
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full bg-secondary border border-border rounded px-2.5 py-2 flex items-center justify-between hover:border-gold/50 transition-colors"
+      >
+        <span className="text-[11px] font-semibold text-foreground font-mono tabular-nums">{value.toFixed(2)}x</span>
+        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-card border border-border rounded shadow-xl overflow-hidden max-h-[260px] overflow-y-auto custom-scrollbar">
+          {STOPS.map((s) => (
+            <button
+              key={s}
+              onClick={() => { onChange(s); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                value === s ? 'text-gold bg-secondary' : 'text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              {s}x
+            </button>
+          ))}
+          <button
+            onClick={() => { setOpen(false); onCustomize(); }}
+            className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold text-gold border-t border-border hover:bg-secondary/60"
+          >
+            Customize
+          </button>
+        </div>
+      )}
     </div>
   );
 }
