@@ -81,6 +81,7 @@ export default function TradePanel({
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('cross');
   const [limitPrice, setLimitPrice] = useState('');
+  const [showLevModal, setShowLevModal] = useState(false);
 
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
