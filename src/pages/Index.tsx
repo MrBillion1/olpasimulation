@@ -12,6 +12,8 @@ import OrderBook from '@/components/OrderBook';
 import { supabase } from '@/integrations/supabase/client';
 import { useStore } from '@/hooks/useStore';
 import { actions, OpenTrade, ClosedTrade, LimitOrder, MarketRuntime } from '@/lib/simulation-store';
+import OlpaBrand from '@/components/OlpaBrand';
+import { ChevronDown, Play } from 'lucide-react';
 
 type ViewMode = 'events' | 'trade';
 type EventTab = 'live' | 'simulation' | 'commentary' | 'scores' | 'possession';
@@ -249,20 +251,24 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
-      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] font-bold text-gold tracking-wider">ADVANCED MICRO-EVENT SIMULATION <span className="text-muted-foreground">·</span> OLPA DEX</span>
+      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-4 min-w-0">
+          <OlpaBrand to="/" />
+          <span className="hidden sm:inline-block h-5 w-px bg-border" />
+          <span className="font-mono text-[11px] font-bold text-gold tracking-wider truncate">
+            ADVANCED MICRO-EVENT SIMULATION
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={startAll}
-            className="text-[9px] font-semibold px-3 py-1.5 rounded bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2"
+            className="text-[10px] font-semibold px-3 py-1.5 rounded-full bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2 flex items-center gap-1"
           >
-            ▶ AUTO
+            <Play className="w-3 h-3 fill-current" /> Auto
           </button>
           <button
             onClick={() => setViewMode('events')}
-            className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all ${
               viewMode === 'events'
                 ? 'bg-gold text-primary-foreground'
                 : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -272,7 +278,7 @@ export default function Index() {
           </button>
           <button
             onClick={() => setViewMode('trade')}
-            className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all ${
               viewMode === 'trade'
                 ? 'bg-gold text-primary-foreground'
                 : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -282,7 +288,7 @@ export default function Index() {
           </button>
           <Link
             to={`/scl/${activeMarketId}`}
-            className="text-[10px] font-semibold px-3 py-1.5 rounded transition-all bg-secondary text-muted-foreground hover:text-foreground"
+            className="text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all bg-secondary text-muted-foreground hover:text-foreground"
             title="Open the Social Conviction Layer for this contract"
           >
             🧠 SCL
