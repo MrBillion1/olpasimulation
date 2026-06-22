@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { MatchEvent, getEventSentiment, MarketConfig } from '@/lib/match-engine';
 import MultiMarketPanel from '@/components/multi/MultiMarketPanel';
 import PortfolioTrackerCard from '@/components/multi/PortfolioTrackerCard';
+import AdjustLeverageModal from '@/components/AdjustLeverageModal';
 
 export interface OpenTrade {
   id: number;
@@ -79,6 +81,7 @@ export default function TradePanel({
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('cross');
   const [limitPrice, setLimitPrice] = useState('');
+  const [showLevModal, setShowLevModal] = useState(false);
 
   const currentPrice = prices[activeMarket.id] ?? activeMarket.startPrice;
   const latestEvent = latestEvents[activeMarket.id];
@@ -237,21 +240,14 @@ export default function TradePanel({
 
       {!isExpired && (
         <>
-          {/* Cross / Isolated */}
-          <div className="flex gap-1 mb-2">
-            {(['cross', 'isolated'] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setMarginMode(mode)}
-                className={`flex-1 text-[9px] py-1 rounded font-semibold uppercase tracking-wider transition-all ${
-                  marginMode === mode
-                    ? 'bg-gold text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
+          {/* Mode + Leverage — Bybit-style header row */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <MarginModeSelect value={marginMode} onChange={setMarginMode} />
+            <LeverageSelect
+              value={leverage}
+              onChange={setLeverage}
+              onCustomize={() => setShowLevModal(true)}
+            />
           </div>
 
           {/* Market / Limit */}
@@ -305,26 +301,6 @@ export default function TradePanel({
             </div>
           </div>
 
-          {/* Leverage */}
-          <div className="mb-2">
-            <label className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-0.5">Leverage</label>
-            <div className="flex gap-0.5">
-              {[1, 2, 5, 10, 20].map(lev => (
-                <button
-                  key={lev}
-                  onClick={() => setLeverage(lev)}
-                  className={`flex-1 text-[9px] py-1 rounded font-semibold transition-all ${
-                    leverage === lev
-                      ? 'bg-gold text-primary-foreground'
-                      : 'bg-secondary text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {lev}x
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* SL/TP */}
           <div className="mb-2 space-y-1">
             <div className="flex items-center gap-2">
@@ -375,23 +351,23 @@ export default function TradePanel({
             )}
           </div>
 
-          {/* Buy/Sell */}
-          <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {/* Long / Short — pill style */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               onClick={() => openTrade('long')}
               disabled={tradeSize > balance}
-              className="bg-accent text-accent-foreground font-semibold text-[10px] py-2 rounded
-                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
+              className="bg-accent text-accent-foreground font-bold text-[12px] py-2.5 rounded-full
+                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40 shadow-sm"
             >
-              {orderType === 'limit' ? 'Limit' : ''} Long / Buy
+              {orderType === 'limit' ? 'Limit ' : ''}Long
             </button>
             <button
               onClick={() => openTrade('short')}
               disabled={tradeSize > balance}
-              className="bg-destructive text-destructive-foreground font-semibold text-[10px] py-2 rounded
-                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40"
+              className="bg-destructive text-destructive-foreground font-bold text-[12px] py-2.5 rounded-full
+                         hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-40 shadow-sm"
             >
-              {orderType === 'limit' ? 'Limit' : ''} Short / Sell
+              {orderType === 'limit' ? 'Limit ' : ''}Short
             </button>
           </div>
 
@@ -409,6 +385,98 @@ export default function TradePanel({
 
       {/* Portfolio tracker always visible when active portfolios exist */}
       {tradeMode === 'single' && <PortfolioTrackerCard prices={prices} />}
+
+      {showLevModal && (
+        <AdjustLeverageModal
+          initial={leverage}
+          notional={tradeSize}
+          onConfirm={(v) => { setLeverage(v); setShowLevModal(false); }}
+          onCancel={() => setShowLevModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Margin Mode dropdown (Cross / Isolated) ─── */
+function MarginModeSelect({ value, onChange }: { value: 'cross' | 'isolated'; onChange: (m: 'cross' | 'isolated') => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full bg-secondary border border-border rounded px-2.5 py-2 flex items-center justify-between hover:border-gold/50 transition-colors"
+      >
+        <span className="text-[11px] font-semibold text-foreground capitalize">{value}</span>
+        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-card border border-border rounded shadow-xl overflow-hidden">
+          {(['cross', 'isolated'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { onChange(m); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-[11px] font-semibold capitalize transition-colors ${
+                value === m ? 'text-gold bg-secondary' : 'text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Leverage dropdown with preset stops + Customize ─── */
+function LeverageSelect({
+  value, onChange, onCustomize,
+}: { value: number; onChange: (n: number) => void; onCustomize: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const STOPS = [1, 2, 3, 5, 10, 25, 50, 100];
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full bg-secondary border border-border rounded px-2.5 py-2 flex items-center justify-between hover:border-gold/50 transition-colors"
+      >
+        <span className="text-[11px] font-semibold text-foreground font-mono tabular-nums">{value.toFixed(2)}x</span>
+        <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-card border border-border rounded shadow-xl overflow-hidden max-h-[260px] overflow-y-auto custom-scrollbar">
+          {STOPS.map((s) => (
+            <button
+              key={s}
+              onClick={() => { onChange(s); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                value === s ? 'text-gold bg-secondary' : 'text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              {s}x
+            </button>
+          ))}
+          <button
+            onClick={() => { setOpen(false); onCustomize(); }}
+            className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold text-gold border-t border-border hover:bg-secondary/60"
+          >
+            Customize
+          </button>
+        </div>
+      )}
     </div>
   );
 }

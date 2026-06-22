@@ -12,6 +12,8 @@ import OrderBook from '@/components/OrderBook';
 import { supabase } from '@/integrations/supabase/client';
 import { useStore } from '@/hooks/useStore';
 import { actions, OpenTrade, ClosedTrade, LimitOrder, MarketRuntime } from '@/lib/simulation-store';
+import OlpaBrand from '@/components/OlpaBrand';
+import { ChevronDown, Play } from 'lucide-react';
 
 type ViewMode = 'events' | 'trade';
 type EventTab = 'live' | 'simulation' | 'commentary' | 'scores' | 'possession';
@@ -154,12 +156,9 @@ export default function Index() {
         <span className="text-sm font-bold text-foreground tracking-wide">
           {activeMarket.contract}
         </span>
-        <svg
+        <ChevronDown
           className={`w-3 h-3 text-muted-foreground transition-transform ${contractDropdownOpen ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+        />
       </button>
       {contractDropdownOpen && (
         <>
@@ -249,20 +248,24 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
-      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] font-bold text-gold tracking-wider">ADVANCED MICRO-EVENT SIMULATION <span className="text-muted-foreground">·</span> OLPA DEX</span>
+      <div className="border-b border-border bg-card/90 px-4 py-1.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-4 min-w-0">
+          <OlpaBrand to="/" />
+          <span className="hidden sm:inline-block h-5 w-px bg-border" />
+          <span className="font-mono text-[11px] font-bold text-gold tracking-wider truncate">
+            ADVANCED MICRO-EVENT SIMULATION
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={startAll}
-            className="text-[9px] font-semibold px-3 py-1.5 rounded bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2"
+            className="text-[10px] font-semibold px-3 py-1.5 rounded-full bg-gold text-primary-foreground hover:brightness-110 active:scale-[0.98] transition-all uppercase tracking-wider mr-2 flex items-center gap-1"
           >
-            ▶ AUTO
+            <Play className="w-3 h-3 fill-current" /> Auto
           </button>
           <button
             onClick={() => setViewMode('events')}
-            className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all ${
               viewMode === 'events'
                 ? 'bg-gold text-primary-foreground'
                 : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -272,7 +275,7 @@ export default function Index() {
           </button>
           <button
             onClick={() => setViewMode('trade')}
-            className={`text-[10px] font-semibold px-3 py-1.5 rounded transition-all ${
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all ${
               viewMode === 'trade'
                 ? 'bg-gold text-primary-foreground'
                 : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -282,7 +285,7 @@ export default function Index() {
           </button>
           <Link
             to={`/scl/${activeMarketId}`}
-            className="text-[10px] font-semibold px-3 py-1.5 rounded transition-all bg-secondary text-muted-foreground hover:text-foreground"
+            className="text-[10px] font-semibold px-3 py-1.5 rounded-full transition-all bg-secondary text-muted-foreground hover:text-foreground"
             title="Open the Social Conviction Layer for this contract"
           >
             🧠 SCL
@@ -459,12 +462,13 @@ export default function Index() {
               </div>
             </div>
 
-            {/* Main trade layout — left (chart + bottom tabs) + right (Trade/OrderBook full height) */}
-            <div ref={tradeLayoutRef} className="flex-1 flex overflow-hidden min-h-0">
-              {/* Left column: Chart on top, Tabs at bottom */}
-              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                {/* Chart — fills remaining space */}
-                <div className="flex-1 overflow-hidden p-2 min-h-0">
+            {/* Main trade layout — Bybit-style: chart + orderbook + trade panel in a single row,
+                then positions below spanning full width. No drag. */}
+            <div ref={tradeLayoutRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
+              {/* Top row: Chart | Order Book | Trade Panel */}
+              <div className="flex-1 flex overflow-hidden min-h-0">
+                {/* Chart */}
+                <div className="flex-1 min-w-0 overflow-hidden p-2">
                   <div className="h-full">
                     <PriceChart
                       priceHistory={activeRuntime.priceHistory}
@@ -479,89 +483,77 @@ export default function Index() {
                   </div>
                 </div>
 
-                {/* Drag divider — drag up/down to resize positions panel */}
-                <div
-                  onMouseDown={handleDividerMouseDown}
-                  className="group h-2 shrink-0 cursor-ns-resize bg-border hover:bg-gold/60 transition-colors flex items-center justify-center relative"
-                  title="Drag up or down to resize"
-                >
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-sm bg-card border border-border group-hover:border-gold absolute z-10">
-                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▲</span>
-                    <span className="text-[7px] font-semibold text-muted-foreground group-hover:text-gold uppercase tracking-wider leading-none">Drag</span>
-                    <span className="text-[8px] text-muted-foreground group-hover:text-gold leading-none">▼</span>
-                  </div>
+                {/* Order Book — middle column */}
+                <div className="w-[260px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2">
+                  <OrderBook
+                    currentPrice={activeRuntime.currentPrice}
+                    lastEventImpact={latestEvent?.impact}
+                    lastEventDirection={activeRuntime.lastDirection}
+                    contract={activeMarket.contract.split('/')[0]}
+                  />
                 </div>
 
-                {/* Bottom tabs — height controlled by drag divider */}
-                <div
-                  style={{ height: `${bottomPanelHeight}px` }}
-                  className="border-t border-border bg-card/40 shrink-0 flex flex-col"
-                >
-                  <div className="flex items-center gap-0 border-b border-border px-2 shrink-0">
-                    {([
-                      { key: 'positions', label: 'Positions', count: openTrades.length },
-                      { key: 'open-orders', label: 'Open Orders', count: limitOrders.length },
-                      { key: 'trade-history', label: 'Trade History', count: closedTrades.length },
-                      { key: 'order-history', label: 'Order History', count: 0 },
-                    ] as { key: PositionTab; label: string; count: number }[]).map(tab => (
-                      <button
-                        key={tab.key}
-                        onClick={() => setPositionTab(tab.key)}
-                        className={`text-[10px] font-semibold px-3 py-2 transition-all border-b-2 ${
-                          positionTab === tab.key
-                            ? 'text-foreground border-gold'
-                            : 'text-muted-foreground border-transparent hover:text-foreground'
-                        }`}
-                      >
-                        {tab.label}
-                        {tab.count > 0 && (
-                          <span className="ml-1 text-[8px] bg-secondary rounded-full px-1.5 py-0.5">{tab.count}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
-                    {positionTab === 'positions' && (
-                      <PositionsTable
-                        openTrades={openTrades}
-                        prices={prices}
-                        onRequestClose={(trade, fraction) => setCloseRequest({ trade, fraction })}
-                      />
-                    )}
-                    {positionTab === 'open-orders' && (
-                      <OpenOrdersTable limitOrders={limitOrders} cancelOrder={cancelLimitOrder} />
-                    )}
-                    {positionTab === 'trade-history' && (
-                      <TradeHistoryTable closedTrades={closedTrades} />
-                    )}
-                    {positionTab === 'order-history' && (
-                      <div className="text-center py-4 text-[10px] text-muted-foreground">No cancelled orders</div>
-                    )}
-                  </div>
+                {/* Trade Panel — right column */}
+                <div className="w-[340px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2">
+                  <TradePanel
+                    activeMarket={activeMarket}
+                    prices={prices}
+                    latestEvents={latestEvents}
+                    balance={balance}
+                    setBalance={setBalance}
+                    openTrades={openTrades}
+                    setOpenTrades={setOpenTrades}
+                    closedTrades={closedTrades}
+                    setClosedTrades={setClosedTrades}
+                    matchStates={matchStates}
+                    onPlaceLimitOrder={(order) => setLimitOrders(prev => [order, ...prev])}
+                  />
                 </div>
               </div>
 
-              {/* Right panel: Trade + OrderBook — full height */}
-              <div className="w-[390px] shrink-0 border-l border-border overflow-y-auto custom-scrollbar p-2 space-y-2">
-                <TradePanel
-                  activeMarket={activeMarket}
-                  prices={prices}
-                  latestEvents={latestEvents}
-                  balance={balance}
-                  setBalance={setBalance}
-                  openTrades={openTrades}
-                  setOpenTrades={setOpenTrades}
-                  closedTrades={closedTrades}
-                  setClosedTrades={setClosedTrades}
-                  matchStates={matchStates}
-                  onPlaceLimitOrder={(order) => setLimitOrders(prev => [order, ...prev])}
-                />
-                <OrderBook
-                  currentPrice={activeRuntime.currentPrice}
-                  lastEventImpact={latestEvent?.impact}
-                  lastEventDirection={activeRuntime.lastDirection}
-                  contract={activeMarket.contract.split('/')[0]}
-                />
+              {/* Bottom: Positions / Orders tabs — fixed height, no drag, spans full width */}
+              <div className="h-[280px] shrink-0 border-t border-border bg-card/40 flex flex-col">
+                <div className="flex items-center gap-0 border-b border-border px-2 shrink-0">
+                  {([
+                    { key: 'positions', label: 'Positions', count: openTrades.length },
+                    { key: 'open-orders', label: 'Open Orders', count: limitOrders.length },
+                    { key: 'trade-history', label: 'Trade History', count: closedTrades.length },
+                    { key: 'order-history', label: 'Order History', count: 0 },
+                  ] as { key: PositionTab; label: string; count: number }[]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setPositionTab(tab.key)}
+                      className={`text-[10px] font-semibold px-3 py-2 transition-all border-b-2 ${
+                        positionTab === tab.key
+                          ? 'text-foreground border-gold'
+                          : 'text-muted-foreground border-transparent hover:text-foreground'
+                      }`}
+                    >
+                      {tab.label}
+                      {tab.count > 0 && (
+                        <span className="ml-1 text-[8px] bg-secondary rounded-full px-1.5 py-0.5">{tab.count}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                  {positionTab === 'positions' && (
+                    <PositionsTable
+                      openTrades={openTrades}
+                      prices={prices}
+                      onRequestClose={(trade, fraction) => setCloseRequest({ trade, fraction })}
+                    />
+                  )}
+                  {positionTab === 'open-orders' && (
+                    <OpenOrdersTable limitOrders={limitOrders} cancelOrder={cancelLimitOrder} />
+                  )}
+                  {positionTab === 'trade-history' && (
+                    <TradeHistoryTable closedTrades={closedTrades} />
+                  )}
+                  {positionTab === 'order-history' && (
+                    <div className="text-center py-4 text-[10px] text-muted-foreground">No cancelled orders</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
