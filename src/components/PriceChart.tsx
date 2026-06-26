@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
+import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, Customized } from 'recharts';
 import { EVENT_META, EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
@@ -38,13 +38,16 @@ function Wick(props: any) {
   return <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />;
 }
 
-// Custom body shape — rectangle from open to close
+// Custom body shape — thin rectangle from open to close
 function Body(props: any) {
   const { x, y, width, height, payload } = props;
   if (!payload) return null;
   const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
   const h = Math.max(height, 1);
-  return <rect x={x} y={y} width={width} height={h} fill={color} stroke={color} />;
+  // Slim body: cap width at 5px, centered
+  const bodyW = Math.min(width, 5);
+  const bx = x + (width - bodyW) / 2;
+  return <rect x={bx} y={y} width={bodyW} height={h} fill={color} stroke={color} />;
 }
 
 export default function PriceChart({ priceHistory, currentPrice, startPrice, contract, homeTeam, awayTeam, homeColor, awayColor }: PriceChartProps) {
@@ -170,6 +173,39 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 <Cell key={i} fill={cd.isUp ? UP_COLOR : DOWN_COLOR} />
               ))}
             </Bar>
+            {/* Event annotations [H]/[A] above candles that repriced the market */}
+            <Customized
+              component={(p: any) => {
+                const xMap = p.xAxisMap && p.xAxisMap[Object.keys(p.xAxisMap)[0]];
+                const yMap = p.yAxisMap && p.yAxisMap[Object.keys(p.yAxisMap)[0]];
+                if (!xMap || !yMap) return null;
+                const xScale = xMap.scale;
+                const yScale = yMap.scale;
+                return (
+                  <g>
+                    {candles.filter(c => c.event).map((c, i) => {
+                      const cx = xScale(c.minute);
+                      const cy = yScale(c.high) - 8;
+                      if (cx == null || cy == null) return null;
+                      const isHome = c.team === 'home';
+                      const tag = isHome ? '[H]' : '[A]';
+                      const color = isHome ? 'hsl(38, 78%, 52%)' : 'hsl(190, 70%, 55%)';
+                      const label = `${tag} ${c.event}`;
+                      return (
+                        <g key={i} transform={`translate(${cx}, ${cy})`}>
+                          <line x1={0} y1={4} x2={0} y2={10} stroke={color} strokeWidth={1} />
+                          <rect x={-label.length * 2.6} y={-9} width={label.length * 5.2} height={11} rx={2}
+                            fill="hsl(24, 12%, 10%)" stroke={color} strokeWidth={0.7} />
+                          <text x={0} y={-1} textAnchor="middle" fontSize={8} fill={color} fontFamily="monospace" fontWeight={600}>
+                            {label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              }}
+            />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
