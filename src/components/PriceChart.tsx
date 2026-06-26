@@ -57,7 +57,7 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
   const gradientId = `priceGrad-${contract.replace(/\//g, '')}`;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
+    <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Live Price</h3>
         <span className="font-mono text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
@@ -79,7 +79,7 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
         </span>
       </div>
 
-      <div className="h-[160px] -mx-2">
+      <div className="flex-1 min-h-[160px] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={priceHistory} margin={{ top: 18, right: 5, bottom: 0, left: 0 }}>
             <defs>
