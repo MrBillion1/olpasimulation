@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
+import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, Customized } from 'recharts';
 import { EVENT_META, EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
