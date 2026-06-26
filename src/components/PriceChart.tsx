@@ -1,4 +1,5 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { useMemo } from 'react';
+import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import { EVENT_META, EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
@@ -12,49 +13,88 @@ interface PriceChartProps {
   awayColor: string;
 }
 
-function EventDot(props: any) {
-  const { cx, cy, payload } = props;
-  if (!payload?.event || !cx || !cy) return null;
+interface Candle {
+  minute: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  isUp: boolean;
+  range: [number, number]; // for bar body
+  wickRange: [number, number]; // for wick
+  event?: string;
+  team?: 'home' | 'away';
+}
 
-  const meta = EVENT_META[payload.event as EventType];
-  if (!meta) return null;
-  if (meta.impact === 'low') return null;
+const UP_COLOR = 'hsl(145, 60%, 48%)';
+const DOWN_COLOR = 'hsl(0, 70%, 55%)';
 
-  const isHome = payload.team === 'home';
-  const actorColor = isHome ? 'hsl(145, 55%, 42%)' : 'hsl(0, 68%, 50%)';
-  const actorBg = isHome ? 'hsl(145, 55%, 25%)' : 'hsl(0, 68%, 30%)';
-  const actorLabel = isHome ? 'H' : 'A';
-  const r = meta.impact === 'high' ? 5 : 3.5;
+// Custom wick shape — thin vertical line across high-low
+function Wick(props: any) {
+  const { x, y, width, height, payload } = props;
+  if (!payload) return null;
+  const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
+  const cx = x + width / 2;
+  return <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />;
+}
 
-  return (
-    <g>
-      {/* Actor circle */}
-      <circle cx={cx} cy={cy} r={r} fill={actorBg} fillOpacity={0.9} stroke={actorColor} strokeWidth={1.5} />
-      <text x={cx} y={cy + 3} textAnchor="middle" fill="white" fontSize={7} fontWeight="bold" fontFamily="monospace">
-        {actorLabel}
-      </text>
-      {/* Event label */}
-      <text
-        x={cx}
-        y={cy - (meta.impact === 'high' ? 10 : 8)}
-        textAnchor="middle"
-        fill={actorColor}
-        fontSize={meta.impact === 'high' ? 7 : 6}
-        fontWeight="bold"
-        fontFamily="monospace"
-      >
-        [{actorLabel}] {payload.event}
-      </text>
-    </g>
-  );
+// Custom body shape — rectangle from open to close
+function Body(props: any) {
+  const { x, y, width, height, payload } = props;
+  if (!payload) return null;
+  const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
+  const h = Math.max(height, 1);
+  return <rect x={x} y={y} width={width} height={h} fill={color} stroke={color} />;
 }
 
 export default function PriceChart({ priceHistory, currentPrice, startPrice, contract, homeTeam, awayTeam, homeColor, awayColor }: PriceChartProps) {
   const priceChange = currentPrice - startPrice;
   const priceChangePct = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : '0.00';
   const isUp = priceChange >= 0;
-  const chartColor = isUp ? 'hsl(145, 55%, 42%)' : 'hsl(0, 68%, 50%)';
-  const gradientId = `priceGrad-${contract.replace(/\//g, '')}`;
+
+  // Aggregate priceHistory into OHLC candles per minute bucket
+  const candles = useMemo<Candle[]>(() => {
+    if (!priceHistory.length) return [];
+    const buckets = new Map<number, typeof priceHistory>();
+    for (const p of priceHistory) {
+      const m = Math.floor(p.minute);
+      if (!buckets.has(m)) buckets.set(m, []);
+      buckets.get(m)!.push(p);
+    }
+    const keys = Array.from(buckets.keys()).sort((a, b) => a - b);
+    const out: Candle[] = [];
+    let prevClose: number | null = null;
+    for (const k of keys) {
+      const pts = buckets.get(k)!;
+      const prices = pts.map(p => p.price);
+      const open = prevClose ?? prices[0];
+      const close = prices[prices.length - 1];
+      const high = Math.max(open, close, ...prices);
+      const low = Math.min(open, close, ...prices);
+      const evPt = pts.find(p => p.event);
+      const up = close >= open;
+      out.push({
+        minute: k,
+        open,
+        high,
+        low,
+        close,
+        isUp: up,
+        range: up ? [open, close] : [close, open],
+        wickRange: [low, high],
+        event: evPt?.event,
+        team: evPt?.team,
+      });
+      prevClose = close;
+    }
+    return out;
+  }, [priceHistory]);
+
+  const last = candles[candles.length - 1];
+  const o = last?.open ?? startPrice;
+  const h = last?.high ?? currentPrice;
+  const l = last?.low ?? currentPrice;
+  const c = last?.close ?? currentPrice;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col">
@@ -62,6 +102,16 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
         <h3 className="text-xs uppercase tracking-widest text-gold font-semibold">Live Price</h3>
         <span className="font-mono text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
           {contract}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 mb-1 text-[10px] font-mono">
+        <span className="text-muted-foreground">O<span className="text-foreground ml-1">{o.toFixed(4)}</span></span>
+        <span className="text-muted-foreground">H<span style={{ color: UP_COLOR }} className="ml-1">{h.toFixed(4)}</span></span>
+        <span className="text-muted-foreground">L<span style={{ color: DOWN_COLOR }} className="ml-1">{l.toFixed(4)}</span></span>
+        <span className="text-muted-foreground">C<span className="text-foreground ml-1">{c.toFixed(4)}</span></span>
+        <span className={`ml-1 ${isUp ? 'text-accent' : 'text-destructive'}`}>
+          {isUp ? '+' : ''}{priceChange.toFixed(4)} ({isUp ? '+' : ''}{priceChangePct}%)
         </span>
       </div>
 
@@ -74,20 +124,11 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
         <span className="font-mono text-2xl font-black tabular-nums text-foreground">
           ${currentPrice.toFixed(4)}
         </span>
-        <span className={`font-mono text-sm font-bold ${isUp ? 'text-accent' : 'text-destructive'}`}>
-          {isUp ? '▲' : '▼'} {Math.abs(priceChange).toFixed(4)} ({isUp ? '+' : ''}{priceChangePct}%)
-        </span>
       </div>
 
       <div className="flex-1 min-h-[160px] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={priceHistory} margin={{ top: 18, right: 5, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={chartColor} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={chartColor} stopOpacity={0} />
-              </linearGradient>
-            </defs>
+          <ComposedChart data={candles} margin={{ top: 18, right: 5, bottom: 0, left: 0 }} barCategoryGap={2}>
             <XAxis
               dataKey="minute"
               tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
@@ -100,10 +141,12 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
               tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
               axisLine={false}
               tickLine={false}
-              width={45}
+              width={55}
+              orientation="right"
               tickFormatter={v => `$${Number(v).toFixed(2)}`}
             />
             <Tooltip
+              cursor={{ stroke: 'hsl(38, 78%, 52%)', strokeDasharray: '3 3', strokeOpacity: 0.4 }}
               contentStyle={{
                 background: 'hsl(24, 12%, 12%)',
                 border: '1px solid hsl(24, 10%, 20%)',
@@ -111,37 +154,34 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 fontSize: '11px',
               }}
               labelFormatter={v => `${v}'`}
-              formatter={(value: number, _name: string, props: any) => {
-                const ev = props?.payload?.event;
-                const team = props?.payload?.team;
-                const actor = team === 'home' ? '[H]' : team === 'away' ? '[A]' : '';
-                const label = ev ? `Price (${actor} ${ev})` : 'Price';
-                return [`$${value.toFixed(4)}`, label];
+              formatter={(_value: any, _name: string, props: any) => {
+                const p: Candle = props?.payload;
+                if (!p) return ['', ''];
+                const ev = p.event ? ` (${p.team === 'home' ? '[H]' : '[A]'} ${p.event})` : '';
+                return [`O ${p.open.toFixed(4)}  H ${p.high.toFixed(4)}  L ${p.low.toFixed(4)}  C ${p.close.toFixed(4)}${ev}`, 'OHLC'];
               }}
             />
             <ReferenceLine y={startPrice} stroke="hsl(38, 78%, 52%)" strokeDasharray="3 3" strokeOpacity={0.3} />
-            <Area
-              type="monotone"
-              dataKey="price"
-              stroke={chartColor}
-              strokeWidth={2}
-              fill={`url(#${gradientId})`}
-              dot={<EventDot />}
-              activeDot={{ r: 4, stroke: chartColor, strokeWidth: 2 }}
-              animationDuration={300}
-            />
-          </AreaChart>
+            {/* Wick */}
+            <Bar dataKey="wickRange" shape={<Wick />} isAnimationActive={false} legendType="none" />
+            {/* Body */}
+            <Bar dataKey="range" shape={<Body />} isAnimationActive={false} legendType="none">
+              {candles.map((cd, i) => (
+                <Cell key={i} fill={cd.isUp ? UP_COLOR : DOWN_COLOR} />
+              ))}
+            </Bar>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
         <span>
-          <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: 'hsl(145, 55%, 42%)' }} />
-          [H] = {homeTeam}
+          <span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: UP_COLOR }} />
+          Bullish minute
         </span>
         <span>
-          <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: 'hsl(0, 68%, 50%)' }} />
-          [A] = {awayTeam}
+          <span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: DOWN_COLOR }} />
+          Bearish minute
         </span>
       </div>
     </div>
