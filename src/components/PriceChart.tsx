@@ -38,13 +38,16 @@ function Wick(props: any) {
   return <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />;
 }
 
-// Custom body shape — rectangle from open to close
+// Custom body shape — thin rectangle from open to close
 function Body(props: any) {
   const { x, y, width, height, payload } = props;
   if (!payload) return null;
   const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
   const h = Math.max(height, 1);
-  return <rect x={x} y={y} width={width} height={h} fill={color} stroke={color} />;
+  // Slim body: cap width at 5px, centered
+  const bodyW = Math.min(width, 5);
+  const bx = x + (width - bodyW) / 2;
+  return <rect x={bx} y={y} width={bodyW} height={h} fill={color} stroke={color} />;
 }
 
 export default function PriceChart({ priceHistory, currentPrice, startPrice, contract, homeTeam, awayTeam, homeColor, awayColor }: PriceChartProps) {
