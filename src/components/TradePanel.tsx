@@ -186,7 +186,7 @@ export default function TradePanel({
   const isExpired = matchStates?.[activeMarket.id]?.minute >= 90 && !matchStates?.[activeMarket.id]?.isRunning;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 h-full">
       {/* Top-level mode selector */}
       <div className="bg-card border border-border rounded-lg p-1 flex gap-1">
         {([
