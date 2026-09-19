@@ -53,7 +53,6 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
   const priceChange = currentPrice - startPrice;
   const priceChangePct = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : '0.00';
   const isUp = priceChange >= 0;
-  const lineColor = isUp ? UP_COLOR : DOWN_COLOR;
 
   // Per-minute step points (close price drives the step line)
   const steps = useMemo<StepPoint[]>(() => {
