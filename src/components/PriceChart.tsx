@@ -25,6 +25,9 @@ interface StepPoint {
 const UP_COLOR = 'hsl(145, 60%, 48%)';
 const DOWN_COLOR = 'hsl(0, 70%, 55%)';
 const GOLD = 'hsl(38, 78%, 52%)';
+const PLOT_LINE = 'hsl(var(--foreground))';
+const AXIS_LINE = 'hsl(var(--border))';
+const AXIS_TEXT = 'hsl(var(--muted-foreground))';
 
 // Event annotation tag at 5px — [H]/[A] above the step that repriced the market
 function EventTag({ cx, cy, event, team }: { cx: number | null; cy: number | null; event: string; team?: 'home' | 'away' }) {
@@ -84,7 +87,18 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
     return out;
   }, [priceHistory]);
 
-  const plotWidth = Math.max(320, steps.length * 28);
+  const plotWidth = Math.max(320, steps.length * 24);
+
+  const yDomain = useMemo<[number, number]>(() => {
+    const values = steps.flatMap(step => [step.low, step.high]);
+    if (!values.length) return [startPrice * 0.995, startPrice * 1.005];
+
+    const minimum = Math.min(...values);
+    const maximum = Math.max(...values);
+    const span = Math.max(maximum - minimum, startPrice * 0.002);
+
+    return [minimum - span * 0.12, maximum + span * 0.16];
+  }, [startPrice, steps]);
 
   const last = steps[steps.length - 1];
   const o = last?.open ?? startPrice;
@@ -123,24 +137,25 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
       </div>
 
       {/* Step line plot: clamped between 15px and 100px tall */}
-      <div className="mt-auto h-[100px] min-h-[15px] max-h-[100px] -mx-2 overflow-x-auto overflow-y-hidden">
+      <div className="mt-auto h-[100px] min-h-[15px] max-h-[100px] -mx-2 overflow-x-auto overflow-y-hidden custom-scrollbar">
         <div className="h-full min-w-full" style={{ width: `${plotWidth}px` }}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={steps} margin={{ top: 14, right: 5, bottom: 0, left: 0 }}>
+            <ComposedChart data={steps} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="minute"
-              tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
-              axisLine={{ stroke: 'hsl(24, 10%, 20%)' }}
+              tick={{ fontSize: 8, fill: AXIS_TEXT }}
+              axisLine={{ stroke: AXIS_LINE }}
               tickLine={false}
               tickFormatter={v => `${v}'`}
             />
             <YAxis
-              domain={['auto', 'auto']}
-              tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
-              axisLine={false}
+              domain={yDomain}
+              tick={{ fontSize: 8, fill: AXIS_TEXT }}
+              axisLine={{ stroke: AXIS_LINE }}
               tickLine={false}
-              width={55}
-              orientation="right"
+              tickCount={3}
+              width={48}
+              orientation="left"
               tickFormatter={v => `$${Number(v).toFixed(2)}`}
             />
             <Tooltip
@@ -162,10 +177,12 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
             <ReferenceLine y={startPrice} stroke={GOLD} strokeDasharray="3 3" strokeOpacity={0.3} />
             {/* Step line — horizontal treads per minute, vertical risers between prices */}
             <Line
-              type="step"
+              type="stepAfter"
               dataKey="close"
-              stroke={lineColor}
-              strokeWidth={1.5}
+              stroke={PLOT_LINE}
+              strokeWidth={1.25}
+              strokeLinecap="square"
+              strokeLinejoin="miter"
               dot={false}
               activeDot={{ r: 2.5 }}
               isAnimationActive={false}
