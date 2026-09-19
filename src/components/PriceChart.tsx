@@ -84,6 +84,8 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
     return out;
   }, [priceHistory]);
 
+  const plotWidth = Math.max(320, steps.length * 28);
+
   const last = steps[steps.length - 1];
   const o = last?.open ?? startPrice;
   const h = last?.high ?? currentPrice;
@@ -121,9 +123,10 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
       </div>
 
       {/* Step line plot: clamped between 15px and 100px tall */}
-      <div className="flex-1 min-h-[15px] max-h-[100px] -mx-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={steps} margin={{ top: 14, right: 5, bottom: 0, left: 0 }}>
+      <div className="mt-auto h-[100px] min-h-[15px] max-h-[100px] -mx-2 overflow-x-auto overflow-y-hidden">
+        <div className="h-full min-w-full" style={{ width: `${plotWidth}px` }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={steps} margin={{ top: 14, right: 5, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="minute"
               tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
@@ -190,8 +193,9 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 );
               }}
             />
-          </ComposedChart>
-        </ResponsiveContainer>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
