@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell, Customized } from 'recharts';
-import { EVENT_META, EventType } from '@/lib/match-engine';
+import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Customized } from 'recharts';
+import { EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
   priceHistory: { minute: number; price: number; event?: string; team?: 'home' | 'away' }[];
@@ -13,50 +13,48 @@ interface PriceChartProps {
   awayColor: string;
 }
 
-interface Candle {
+interface StepPoint {
   minute: number;
+  close: number;
   open: number;
   high: number;
   low: number;
-  close: number;
-  isUp: boolean;
-  range: [number, number]; // for bar body
-  wickRange: [number, number]; // for wick
   event?: string;
   team?: 'home' | 'away';
 }
 
 const UP_COLOR = 'hsl(145, 60%, 48%)';
 const DOWN_COLOR = 'hsl(0, 70%, 55%)';
+const GOLD = 'hsl(38, 78%, 52%)';
 
-// Custom wick shape — thin vertical line across high-low
-function Wick(props: any) {
-  const { x, y, width, height, payload } = props;
-  if (!payload) return null;
-  const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
-  const cx = x + width / 2;
-  return <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />;
-}
-
-// Custom body shape — thin rectangle from open to close
-function Body(props: any) {
-  const { x, y, width, height, payload } = props;
-  if (!payload) return null;
-  const color = payload.isUp ? UP_COLOR : DOWN_COLOR;
-  const h = Math.max(height, 1);
-  // Slim body: cap width at 5px, centered
-  const bodyW = Math.min(width, 5);
-  const bx = x + (width - bodyW) / 2;
-  return <rect x={bx} y={y} width={bodyW} height={h} fill={color} stroke={color} />;
+// Event annotation tag at 5px — [H]/[A] above the step that repriced the market
+function EventTag({ cx, cy, event, team }: { cx: number | null; cy: number | null; event: string; team?: 'home' | 'away' }) {
+  if (cx == null || cy == null) return null;
+  const isHome = team === 'home';
+  const tag = isHome ? '[H]' : '[A]';
+  const color = isHome ? GOLD : 'hsl(190, 70%, 55%)';
+  const label = `${tag} ${event}`;
+  const w = label.length * 3.1;
+  return (
+    <g transform={`translate(${cx}, ${cy})`}>
+      <line x1={0} y1={2} x2={0} y2={6} stroke={color} strokeWidth={0.6} />
+      <rect x={-w / 2} y={-6} width={w} height={7} rx={1.5}
+        fill="hsl(24, 12%, 10%)" stroke={color} strokeWidth={0.5} />
+      <text x={0} y={-0.5} textAnchor="middle" fontSize={5} fill={color} fontFamily="monospace" fontWeight={600}>
+        {label}
+      </text>
+    </g>
+  );
 }
 
 export default function PriceChart({ priceHistory, currentPrice, startPrice, contract, homeTeam, awayTeam, homeColor, awayColor }: PriceChartProps) {
   const priceChange = currentPrice - startPrice;
   const priceChangePct = startPrice > 0 ? ((priceChange / startPrice) * 100).toFixed(2) : '0.00';
   const isUp = priceChange >= 0;
+  const lineColor = isUp ? UP_COLOR : DOWN_COLOR;
 
-  // Aggregate priceHistory into OHLC candles per minute bucket
-  const candles = useMemo<Candle[]>(() => {
+  // Per-minute step points (close price drives the step line)
+  const steps = useMemo<StepPoint[]>(() => {
     if (!priceHistory.length) return [];
     const buckets = new Map<number, typeof priceHistory>();
     for (const p of priceHistory) {
@@ -65,26 +63,20 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
       buckets.get(m)!.push(p);
     }
     const keys = Array.from(buckets.keys()).sort((a, b) => a - b);
-    const out: Candle[] = [];
+    const out: StepPoint[] = [];
     let prevClose: number | null = null;
     for (const k of keys) {
       const pts = buckets.get(k)!;
       const prices = pts.map(p => p.price);
       const open = prevClose ?? prices[0];
       const close = prices[prices.length - 1];
-      const high = Math.max(open, close, ...prices);
-      const low = Math.min(open, close, ...prices);
       const evPt = pts.find(p => p.event);
-      const up = close >= open;
       out.push({
         minute: k,
         open,
-        high,
-        low,
         close,
-        isUp: up,
-        range: up ? [open, close] : [close, open],
-        wickRange: [low, high],
+        high: Math.max(open, close, ...prices),
+        low: Math.min(open, close, ...prices),
         event: evPt?.event,
         team: evPt?.team,
       });
@@ -93,7 +85,7 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
     return out;
   }, [priceHistory]);
 
-  const last = candles[candles.length - 1];
+  const last = steps[steps.length - 1];
   const o = last?.open ?? startPrice;
   const h = last?.high ?? currentPrice;
   const l = last?.low ?? currentPrice;
@@ -129,9 +121,10 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
         </span>
       </div>
 
-      <div className="flex-1 min-h-[160px] -mx-2">
+      {/* Step line plot: clamped between 15px and 100px tall */}
+      <div className="flex-1 min-h-[15px] max-h-[100px] -mx-2">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={candles} margin={{ top: 18, right: 5, bottom: 0, left: 0 }} barCategoryGap={2}>
+          <ComposedChart data={steps} margin={{ top: 14, right: 5, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="minute"
               tick={{ fontSize: 9, fill: 'hsl(30, 10%, 48%)' }}
@@ -149,7 +142,7 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
               tickFormatter={v => `$${Number(v).toFixed(2)}`}
             />
             <Tooltip
-              cursor={{ stroke: 'hsl(38, 78%, 52%)', strokeDasharray: '3 3', strokeOpacity: 0.4 }}
+              cursor={{ stroke: GOLD, strokeDasharray: '3 3', strokeOpacity: 0.4 }}
               contentStyle={{
                 background: 'hsl(24, 12%, 12%)',
                 border: '1px solid hsl(24, 10%, 20%)',
@@ -158,22 +151,24 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
               }}
               labelFormatter={v => `${v}'`}
               formatter={(_value: any, _name: string, props: any) => {
-                const p: Candle = props?.payload;
+                const p: StepPoint | undefined = props?.payload;
                 if (!p) return ['', ''];
                 const ev = p.event ? ` (${p.team === 'home' ? '[H]' : '[A]'} ${p.event})` : '';
-                return [`O ${p.open.toFixed(4)}  H ${p.high.toFixed(4)}  L ${p.low.toFixed(4)}  C ${p.close.toFixed(4)}${ev}`, 'OHLC'];
+                return [`$${p.close.toFixed(4)}${ev}`, 'Price'];
               }}
             />
-            <ReferenceLine y={startPrice} stroke="hsl(38, 78%, 52%)" strokeDasharray="3 3" strokeOpacity={0.3} />
-            {/* Wick */}
-            <Bar dataKey="wickRange" shape={<Wick />} isAnimationActive={false} legendType="none" />
-            {/* Body */}
-            <Bar dataKey="range" shape={<Body />} isAnimationActive={false} legendType="none">
-              {candles.map((cd, i) => (
-                <Cell key={i} fill={cd.isUp ? UP_COLOR : DOWN_COLOR} />
-              ))}
-            </Bar>
-            {/* Event annotations [H]/[A] above candles that repriced the market */}
+            <ReferenceLine y={startPrice} stroke={GOLD} strokeDasharray="3 3" strokeOpacity={0.3} />
+            {/* Step line — horizontal treads per minute, vertical risers between prices */}
+            <Line
+              type="step"
+              dataKey="close"
+              stroke={lineColor}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 2.5 }}
+              isAnimationActive={false}
+            />
+            {/* Event annotations at 5px above the step that repriced the market */}
             <Customized
               component={(p: any) => {
                 const xMap = p.xAxisMap && p.xAxisMap[Object.keys(p.xAxisMap)[0]];
@@ -183,25 +178,15 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
                 const yScale = yMap.scale;
                 return (
                   <g>
-                    {candles.filter(c => c.event).map((c, i) => {
-                      const cx = xScale(c.minute);
-                      const cy = yScale(c.high) - 8;
-                      if (cx == null || cy == null) return null;
-                      const isHome = c.team === 'home';
-                      const tag = isHome ? '[H]' : '[A]';
-                      const color = isHome ? 'hsl(38, 78%, 52%)' : 'hsl(190, 70%, 55%)';
-                      const label = `${tag} ${c.event}`;
-                      return (
-                        <g key={i} transform={`translate(${cx}, ${cy})`}>
-                          <line x1={0} y1={4} x2={0} y2={10} stroke={color} strokeWidth={1} />
-                          <rect x={-label.length * 2.6} y={-9} width={label.length * 5.2} height={11} rx={2}
-                            fill="hsl(24, 12%, 10%)" stroke={color} strokeWidth={0.7} />
-                          <text x={0} y={-1} textAnchor="middle" fontSize={8} fill={color} fontFamily="monospace" fontWeight={600}>
-                            {label}
-                          </text>
-                        </g>
-                      );
-                    })}
+                    {steps.filter(s => s.event).map((s, i) => (
+                      <EventTag
+                        key={i}
+                        cx={xScale(s.minute)}
+                        cy={yScale(s.close) - 6}
+                        event={s.event!}
+                        team={s.team}
+                      />
+                    ))}
                   </g>
                 );
               }}
@@ -211,13 +196,9 @@ export default function PriceChart({ priceHistory, currentPrice, startPrice, con
       </div>
 
       <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-        <span>
-          <span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: UP_COLOR }} />
-          Bullish minute
-        </span>
-        <span>
-          <span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: DOWN_COLOR }} />
-          Bearish minute
+        <span>Step line · 1m interval</span>
+        <span className={isUp ? 'text-accent' : 'text-destructive'}>
+          {isUp ? '▲' : '▼'} {isUp ? 'Up' : 'Down'} trend
         </span>
       </div>
     </div>
