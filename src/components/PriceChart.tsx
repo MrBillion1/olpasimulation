@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Customized } from 'recharts';
-import { EventType } from '@/lib/match-engine';
 
 interface PriceChartProps {
   priceHistory: { minute: number; price: number; event?: string; team?: 'home' | 'away' }[];
